@@ -1,0 +1,15 @@
+[
+  {
+    "file": "photos/dawn-01.webp",
+    "thumb": "photos/dawn-01.thumb.webp",
+    "exif": {
+      "camera": "Sony A7 IV",
+      "lens": "FE 85mm F1.8",
+      "focalLength": 85,
+      "aperture": 1.8,
+      "shutter": 0.005,
+      "iso": 100,
+      "dateTaken": "2026-09-21"
+    }
+  }
+]

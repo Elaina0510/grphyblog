@@ -8,7 +8,7 @@
 
 | # | 模块 | 任务文件 | 依赖 | 对应里程碑 | 状态 |
 |---|---|---|---|---|---|
-| 1 | 项目骨架 | [project-scaffold.md](project-scaffold.md) | — | 1 | [ ] |
+| 1 | 项目骨架 | [project-scaffold.md](project-scaffold.md) | — | 1 | [x] |
 | 2 | 内容模型 | [content-model.md](content-model.md) | 1 | 1 | [ ] |
 | 3 | 照片导入脚本 | [import-photos.md](import-photos.md) | 2 | 1 | [ ] |
 | 4 | 视觉系统 | [visual-system.md](visual-system.md) | 1 | 4 | [ ] |
