@@ -1,0 +1,145 @@
+---
+/* ============================================================================
+ * Base.astro —— 全站版式骨架（visual-system 任务 4）
+ *
+ * 一件套到底：左缘 76px 固定书脊（署名 + 书脊导航 + 朱砂方印）+ 1280 容器 + 版权页脚
+ *            + 入场动效的一次编排。后续所有页面（首页 / 系列 / 随笔 / 关于 / 404）都套本布局，
+ *            不再各自处理导航与书脊（§3「内容与代码分离」+「样式集中在 styles」）。
+ *
+ * 骨架几何与色一律来自 src/styles/global.css 的 token，本文件不写设计数值。
+ * 导航项、品牌字、页脚文字来自 src/data/site.json（站点级事实，唯一出处）。
+ *
+ * Props 约定（给下游页面）：
+ *   title        <title>，默认 site.name.display（「柚 · Justyou」）
+ *   description  meta description，默认 site.description
+ *   current      书脊导航高亮项，取 site.nav[].key（'home' | 'series' | 'posts' | 'about'）；
+ *                非四页（如 404、临时演示页）传 'none' 或不传
+ *   showFooter   默认 true；404 之类想自己收尾时可关
+ *   bodyClass    追加到 <body> 的类名
+ *   slot="head"  页面往 <head> 里补 meta / link
+ *   默认 slot    写进 <main> 的正文
+ *
+ * 无脚本降级：html 上没有 .js 时，.rise 隐藏态整体不生效（global.css 已处理），内容直出。
+ * ==========================================================================*/
+import '../styles/global.css';
+import SiteMark from '../components/SiteMark.astro';
+import site from '../data/site.json';
+
+interface Props {
+  title?: string;
+  description?: string;
+  current?: 'home' | 'series' | 'posts' | 'about' | 'none';
+  showFooter?: boolean;
+  bodyClass?: string;
+}
+
+const {
+  title = site.name.display,
+  description = site.description,
+  current = 'none',
+  showFooter = true,
+  bodyClass = '',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang={site.locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <!-- 只给「有脚本」的浏览器打开入场动效的隐藏态；禁用 JS 时内容直接显示 -->
+    <script is:inline>document.documentElement.classList.add('js');</script>
+    <slot name="head" />
+  </head>
+
+  <body class={bodyClass}>
+    <!-- 书口侧脊：全站唯一导航出口（竖排宋体；当前项朱砂 + 下划线） -->
+    <header class="spine">
+      <div class="spine-brand">
+        <SiteMark variant="spine" />
+        <span class="spine-rule" aria-hidden="true"></span>
+      </div>
+
+      <nav class="spine-nav" aria-label="站内导航">
+        {
+          site.nav.map((item) => (
+            <a
+              class="v-writing"
+              href={item.href}
+              aria-current={current === item.key ? 'page' : undefined}
+            >
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+
+      <SiteMark variant="seal" />
+    </header>
+
+    <div class="page">
+      <main id="main">
+        <slot />
+      </main>
+
+      {
+        showFooter ? (
+          <div class="wrap">
+            <footer class="site-footer">
+              <span class="mono">{site.footer.note}</span>
+              <span class="mono">{site.footer.copyright}</span>
+            </footer>
+          </div>
+        ) : null
+      }
+    </div>
+  </body>
+</html>
+
+<script>
+  /* 入场 rise：整页只编排一次（design.json motion.rise）
+   * 同组兄弟按顺序错峰 --stagger-step，累加不超过 --stagger-max；
+   * prefers-reduced-motion 或没有 IntersectionObserver 时，一次性直出，不做位移。 */
+  function readMs(name: string, fallback: number): number {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
+    const n = Number.parseFloat(raw);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  const nodes = Array.from(document.querySelectorAll<HTMLElement>('.rise'));
+  if (nodes.length > 0) {
+    const reduce =
+      typeof matchMedia === 'function' &&
+      matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const show = (el: HTMLElement) => el.classList.add('is-in');
+
+    if (reduce || typeof IntersectionObserver === 'undefined') {
+      nodes.forEach(show);
+    } else {
+      const step = readMs('--stagger-step', 90);
+      const max = readMs('--stagger-max', 270);
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const el = entry.target as HTMLElement;
+            const siblings = Array.from(el.parentElement?.children ?? []).filter(
+              (c) => c.classList.contains('rise'),
+            );
+            const index = Math.max(siblings.indexOf(el), 0);
+            el.style.transitionDelay = `${Math.min(index * step, max)}ms`;
+            show(el);
+            io.unobserve(el);
+          }
+        },
+        { threshold: 0.12 },
+      );
+      nodes.forEach((el) => io.observe(el));
+    }
+  }
+</script>

@@ -1,0 +1,870 @@
+/* =============================================================================
+ * global.css —— 「摄影 zine · 自印书」视觉系统的唯一样式源（visual-system 任务 2/4/5/6）
+ *
+ * 事实源：.impeccable/design.json（机器可读 token）+ doc/designv0.0.1.md §10（硬约束）
+ *        + doc/preview/home.html（首页视觉稿，结构与数值以它为准）。
+ * 规范文档：根目录 DESIGN.md（token 表 + 八节）。三者数值必须一致，由
+ *        tests/unit/design-tokens.test.ts 钉住。
+ *
+ * 分层职责（§3 边界「设计变量集中一处」）：
+ *   0 本文件顶部 —— 字体接入（只有 @import，无字面量）
+ *   1 :root       —— 全站唯一的设计变量：色 / 字 / 版式 / 节奏 / 动效 / 组件度量
+ *   2 基础层      —— reset、排版默认、选区、焦点环、滚动条
+ *   3 版式骨架    —— 书口侧脊（含书脊导航）· 1280 容器 · 跨页网格 · 页脚
+ *   4 声音工具类  —— .t-*（字号阶梯）与 .v-*（竖排），供页面组装时复用
+ *   5 动效层      —— 入场 rise 的一次编排 + prefers-reduced-motion 直出
+ *   6 窄屏（≤900px）—— 书脊转吸顶横条 · 多栏归一 · Display 转横排
+ *
+ * ⚠️ 组件层（src/components/*.astro、src/layouts/Base.astro）只允许写 var()，
+ *    不得出现裸色值 / px 字号 / 第二条缓动曲线；由 tests/unit/design-no-hardcode.test.ts 拦。
+ * ============================================================================= */
+
+@import './fonts.css';
+
+/* =============================================================================
+ * 1. 设计变量（token）
+ * ============================================================================= */
+:root {
+  /* ---- 1.1 四色锁死（§10：照片承担全部色彩，UI 不加新色相）---- */
+  --paper: #f2f1ec; /* 纸白 · 冷调未涂布纸 */
+  --ink: #26241f; /* 墨 · 印刷黑 */
+  --cinnabar: #a03b28; /* 朱砂 · 全站唯一强调色，面积 ≤5%，仅「盖章级」语义 */
+  --night: #191816; /* 夜底 · 灯箱专用 */
+
+  /* ---- 1.2 同族派生色（全部取自 design.json 的 tonalRamp，不引入新色相）---- */
+  --paper-deep: #e8e6dd; /* 纸白 6 · 悬停底、滚动条槽 */
+  --paper-dim: #b9b7ae; /* 纸白 4 · 夜底上的次级文字 */
+  --rule: #d5d2c8; /* 纸白 5 · 发丝栏线 */
+  --ink-soft: #5b574e; /* 墨 5 · 次级文字、微标签 */
+  --ink-mute: #85806f; /* 墨 6 · 更弱的批注 */
+  --cinnabar-deep: #7e2e1f; /* 朱砂 3 · 印章/记号的按压态 */
+
+  /* ---- 1.3 同色透明叠加（避免组件里出现裸 rgba()）---- */
+  --scrim-night: rgba(25, 24, 22, 0.84); /* 页码片底：夜底 84% */
+  --scrim-paper: rgba(242, 241, 236, 0.92); /* 闲章底：纸白 92% */
+  --hairline-on-night: rgba(242, 241, 236, 0.25); /* 夜底上的细线 */
+  --gutter-ink: rgba(38, 36, 31, 0.07); /* 书槽渐变起点 */
+
+  /* ---- 1.4 阴影（The Paper-Stack Rule：深度=图版压在纸上，不是飘在云上）---- */
+  --shadow-plate: 0 10px 28px -18px rgba(38, 36, 31, 0.45); /* 落纸影，仅图版 */
+  --shadow-plate-float: 0 24px 60px -30px rgba(0, 0, 0, 0.9); /* 灯箱观赏页浮起 */
+  --shadow-seal: 0 1px 3px rgba(38, 36, 31, 0.25); /* 方印压纸 */
+  --gutter-spine: linear-gradient(90deg, var(--gutter-ink), transparent 14px); /* 书槽 */
+
+  /* ---- 1.5 字族（三声部，The Three Voices Rule）---- */
+  --font-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', 'SimSun', serif; /* 书：书名/章题/条目题 */
+  --font-sans: 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; /* 文：正文/手记 */
+  --font-mono: 'Courier Prime', 'Courier New', ui-monospace, Consolas, monospace; /* 数：页码/EXIF/微标签 */
+
+  /* ---- 1.6 字号阶梯（16.5px 正文为 §10 定值，其余源自 home.html）---- */
+  --text-display: clamp(56px, 7vw, 84px); /* 开场竖排书名，全站一处 */
+  --text-display-narrow: clamp(40px, 13vw, 52px); /* 窄屏转横排 */
+  --text-spine-brand: 21px; /* 书脊品牌「柚影集」 */
+  --text-headline: clamp(26px, 3.2vw, 36px); /* 章节题（系列名 / 目次 / 随笔 / 版权页） */
+  --text-subtitle: 22px; /* 版权页小节题 */
+  --text-title: 19px; /* 条目题（目次行题名） */
+  --text-body: 16.5px; /* 正文 */
+  --text-body-lead: 17px; /* 随笔正文 */
+  --text-margin: 15.5px; /* 页边手记 */
+  --text-nav: 14.5px; /* 书脊导航 */
+  --text-nav-narrow: 13.5px; /* 窄屏书脊导航 */
+  --text-label-xl: 15px; /* 方印「柚」 */
+  --text-label-lg: 14px; /* 拍摄单题名 */
+  --text-label: 11.5px; /* 微标签基线 */
+  --text-label-md: 12px; /* 册号 No.01 / 等宽元数据 */
+  --text-label-sm: 11px; /* 页码片 / 拍摄单参数行 / 闲章内字 */
+
+  /* ---- 1.7 字重（宋体只用 600/900，黑体只用 400/500）---- */
+  --weight-book: 900; /* 书名体 */
+  --weight-entry: 600; /* 条目题 / 拍摄单题名 */
+  --weight-em: 500; /* 正文里的强调 */
+
+  /* ---- 1.8 行高与字距（The Positive Tracking Rule：中文只用正值宽字距）---- */
+  --leading-body: 1.9; /* §10 定值 */
+  --leading-tight: 1.18; /* 竖排书名 */
+  --leading-label: 1.8; /* 等宽数据块 */
+  --leading-stamp: 1.3; /* 闲章内多行 */
+  --tracking-tight: 0.05em; /* 条目题 */
+  --tracking-head: 0.06em; /* 章节题 / 拍摄单题名 */
+  --tracking-label: 0.09em; /* 微标签 */
+  --tracking-wide: 0.12em; /* 页码片 / 竖排书名 */
+  --tracking-mono: 0.14em; /* 册号 */
+  --tracking-brand: 0.35em; /* 书脊品牌 */
+  --tracking-nav: 0.5em; /* 书脊导航 */
+
+  /* ---- 1.9 行长（散文 ≤66ch，§10 版式）---- */
+  --measure: 66ch; /* 随笔正文 */
+  --measure-note: 62ch; /* 页边手记 */
+  --measure-intro: 34ch; /* 开场自述 */
+  --measure-colophon: 44ch; /* 版权页简介 */
+
+  /* ---- 1.10 版式骨架 ---- */
+  --spine-w: 76px; /* 左缘固定书脊 */
+  --spine-w-narrow: 0px; /* 窄屏取消左缘（书脊转吸顶横条） */
+  --spine-h-narrow: 56px; /* 窄屏书脊高度 */
+  --container-w: 1280px; /* 正文容器 */
+  --gutter-x: clamp(20px, 4vw, 56px); /* 容器左右内衬 */
+  --open-min: 100vh; /* 开场跨页最小高 */
+  --open-cols: minmax(280px, 1fr) 2fr; /* 开场 1/3 文字 · 2/3 图版 */
+  --duo-cols: 5fr 7fr; /* 系列跨页：手记 · 图版 */
+  --duo-cols-rev: 7fr 5fr; /* 左右对置反向 */
+  --essay-cols: minmax(0, 7fr) minmax(180px, 3fr); /* 正文 · 页边批注 */
+  --colophon-cols: 1fr 1fr; /* 版权页两栏 */
+
+  /* ---- 1.11 节奏（章间留白是翻页呼吸，§10 定值）---- */
+  --gap-page: clamp(72px, 12vh, 128px); /* 章与章之间：唯一的翻页留白 */
+  --gap-open-top: clamp(48px, 9vh, 96px); /* 开场顶衬 */
+  --gap-spread: clamp(32px, 5vw, 72px); /* 跨页栏间 */
+  --gap-duo: clamp(20px, 3vw, 40px); /* 对置栏间 */
+  --gap-essay: clamp(28px, 5vw, 72px); /* 随笔栏间 */
+  --gap-colophon: clamp(32px, 6vw, 88px); /* 版权页栏间 */
+  --gap-stack-xs: 6px;
+  --gap-stack-sm: 14px;
+  --gap-stack-md: 26px;
+  --gap-stack-lg: 36px;
+  --gap-inline: 18px; /* 章节题行三段之间 */
+  --gap-baseline: 28px; /* 章题行到图版 */
+  --gap-toc: 14px; /* 目次行四段之间 */
+
+  /* ---- 1.12 动效（§10：全站唯一一条缓动曲线）---- */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-rise: 0.9s; /* 入场 rise */
+  --dur-morph: 0.42s; /* 图版 ↔ 灯箱 View Transition */
+  --dur-sheet: 0.55s; /* 拍摄单从页边滑入 */
+  --dur-hover: 0.8s; /* 满版图版呼吸级 hover */
+  --dur-fast: 0.2s; /* 细线/颜色微反馈 */
+  --dur-fade: 0.35s; /* 灯箱开合 */
+  --rise-y: 26px; /* rise 起始位移 */
+  --rise-clip: 12%; /* rise 起始裁切 */
+  --sheet-y: 18px; /* 拍摄单起始位移 */
+  --stagger-step: 90ms; /* 同组错峰步长 */
+  --stagger-max: 270ms; /* 错峰上限：整页只编排一次 */
+
+  /* ---- 1.13 组件度量（组件层因此零字面量）---- */
+  --rule-w: 1px; /* 发丝线宽 */
+  --focus-ring-w: 2px; /* 焦点环 */
+  --focus-ring-offset: 3px;
+  --underline-offset: 4px;
+  --frame-gap: 36px; /* 开场左栏纵向堆叠 */
+  --gap-bookname: 22px; /* 开场书名：CJK 竖排大字 ↔ 拉丁竖列 */
+  --hairline-gap: 16px; /* 栏线到内容 */
+  --note-gap: 24px; /* 手记与页码元数据之间 */
+  --footer-pad-top: 22px;
+  --footer-pad-bottom: 34px;
+  --spine-pad-top: 28px;
+  --spine-pad-bottom: 24px;
+  --spine-pad-narrow-x: 18px;
+  --spine-brand-gap: 14px;
+  --spine-nav-gap: 26px;
+  --spine-nav-gap-narrow: 20px;
+  --spine-rule-h: 34px; /* 书脊里的短竖线 */
+  --spine-rule-w-narrow: 26px; /* 窄屏转横 */
+  --seal-size: 34px;
+  --seal-size-narrow: 28px;
+  --stamp-size: 44px;
+  --stamp-inset: 18px;
+  --stamp-border-w: 1.5px;
+  --chip-pad-y: 3px;
+  --chip-pad-x: 9px;
+  --chip-inset-left: 14px;
+  --chip-inset-bottom: 12px;
+  --shotcard-pad-x: 16px;
+  --shotcard-pad-top: 10px;
+  --shotcard-pad-bottom: 11px;
+  --shotcard-max-w: min(70%, 420px);
+  --toc-pad-y: 20px;
+  --toc-pad-x: 4px;
+  --toc-no-w: 52px;
+  --toc-dots-offset: -4px;
+  --radius-circle: 50%; /* 圆角仅印章（含闲章）可用 */
+  --plate-zoom: scale(1.012); /* hover 呼吸量 */
+  --dropcap-size: 2.9em; /* 首字下沉 */
+  --dropcap-pad: 0.06em 0.12em 0 0;
+  --para-gap: 1.4em; /* 散文段间距 */
+
+  /* ---- 1.14 断点说明 ---- */
+  /* 全站唯一断点 900px（design.json page-narrow）。CSS 不能在媒体查询里用 var()，
+     所以它只以字面量出现在下面的 @media 一处；改断点只改那一处。 */
+}
+
+/* =============================================================================
+ * 2. 基础层
+ * ============================================================================= */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--cinnabar);
+  color: var(--paper);
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-w);
+  text-underline-offset: var(--underline-offset);
+}
+
+a:hover {
+  color: var(--cinnabar);
+  text-decoration-color: var(--cinnabar);
+}
+
+:focus-visible {
+  outline: var(--focus-ring-w) solid var(--cinnabar);
+  outline-offset: var(--focus-ring-offset);
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+}
+::-webkit-scrollbar-track {
+  background: var(--paper-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ink-soft);
+  border: 3px solid var(--paper-deep);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink);
+}
+
+/* =============================================================================
+ * 3. 版式骨架：书口侧脊 + 容器 + 跨页网格 + 页脚
+ * ============================================================================= */
+
+/* 章＝一次翻页：章间留白只在此处定义一次 */
+section {
+  padding-top: var(--gap-page);
+}
+
+/* 左缘 76px 固定书脊：站点署名 + 书脊导航 + 朱砂方印，全站统一由 Base.astro 提供 */
+.spine {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--spine-w);
+  z-index: 40;
+  background: var(--paper);
+  border-right: var(--rule-w) solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spine-pad-top) 0 var(--spine-pad-bottom);
+}
+
+/* 书槽：书脊与页面之间的厚纸暗示 */
+.spine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -14px;
+  width: 14px;
+  pointer-events: none;
+  background: var(--gutter-spine);
+}
+
+.spine-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spine-brand-gap);
+}
+
+.spine-rule {
+  width: var(--rule-w);
+  height: var(--spine-rule-h);
+  background: var(--ink);
+}
+
+/* 书脊导航（竖排宋体；当前项朱砂 + 下划线） */
+.spine-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spine-nav-gap);
+}
+
+.spine-nav a {
+  font-family: var(--font-serif);
+  font-size: var(--text-nav);
+  letter-spacing: var(--tracking-nav);
+  text-decoration: none;
+  color: var(--ink-soft);
+}
+
+.spine-nav a:hover,
+.spine-nav a[aria-current] {
+  color: var(--cinnabar);
+}
+
+.spine-nav a[aria-current] {
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-w);
+  text-underline-offset: var(--underline-offset);
+}
+
+/* 朱砂方印：站点署名（全站唯一的大色块朱砂，面积极小） */
+.seal {
+  width: var(--seal-size);
+  height: var(--seal-size);
+  background: var(--cinnabar);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--text-label-xl);
+  box-shadow: var(--shadow-seal);
+}
+
+/* 版面：书脊之外的整页 */
+.page {
+  margin-left: var(--spine-w);
+  position: relative;
+}
+
+.wrap {
+  max-width: var(--container-w);
+  margin: 0 auto;
+  padding: 0 var(--gutter-x);
+}
+
+.hairline {
+  border: 0;
+  border-top: var(--rule-w) solid var(--rule);
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-soft);
+}
+
+/* 章节题行三段式：册号（等宽朱砂）+ 题名（宋体 900）+ 元数据（等宽墨浅） */
+.chapter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap-inline);
+  margin-bottom: var(--gap-baseline);
+}
+
+.chapter-no {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  letter-spacing: var(--tracking-mono);
+  color: var(--cinnabar);
+}
+
+.chapter-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-soft);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 跨页网格：开场 1/3 文字 · 2/3 图版；系列左右对置；随笔正文 · 页边批注 */
+.spread {
+  display: grid;
+  grid-template-columns: var(--open-cols);
+  gap: var(--gap-spread);
+  align-items: stretch;
+  min-height: var(--open-min);
+  padding-top: var(--gap-open-top);
+  padding-bottom: var(--gap-stack-md);
+}
+
+.spread-quiet {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--frame-gap);
+  padding-bottom: var(--gap-stack-xs);
+}
+
+.duo {
+  display: grid;
+  grid-template-columns: var(--duo-cols);
+  gap: var(--gap-duo);
+  align-items: start;
+  margin-top: var(--gap-duo);
+}
+
+.duo-rev {
+  grid-template-columns: var(--duo-cols-rev);
+}
+
+.note-margin {
+  margin-top: var(--gap-stack-md);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--note-gap);
+  align-items: start;
+}
+
+.note-margin p {
+  max-width: var(--measure-note);
+  color: var(--ink-soft);
+  font-size: var(--text-margin);
+}
+
+.note-margin p b {
+  color: var(--ink);
+  font-weight: var(--weight-em);
+}
+
+.essay {
+  display: grid;
+  grid-template-columns: var(--essay-cols);
+  gap: var(--gap-essay);
+}
+
+/* 页边批注：唯一带朱砂顶线的边栏 */
+.marginalia {
+  border-top: var(--rule-w) solid var(--cinnabar);
+  padding-top: var(--hairline-gap);
+  display: grid;
+  gap: var(--gap-stack-md);
+  align-content: start;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--leading-label);
+  color: var(--ink-soft);
+}
+
+/* 开场收录信息栏 */
+.index-note {
+  border-top: var(--rule-w) solid var(--rule);
+  padding-top: var(--hairline-gap);
+  display: grid;
+  gap: var(--gap-stack-xs);
+}
+
+/* 版权页 / 关于 两栏 */
+.colophon {
+  display: grid;
+  grid-template-columns: var(--colophon-cols);
+  gap: var(--gap-colophon);
+}
+
+.colophon h3 {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--text-subtitle);
+  letter-spacing: var(--tracking-head);
+  margin-bottom: var(--hairline-gap);
+}
+
+.colophon p {
+  max-width: var(--measure-colophon);
+}
+
+.colophon dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--gap-stack-xs) 22px;
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  line-height: var(--leading-label);
+}
+
+.colophon dt {
+  color: var(--ink-soft);
+  letter-spacing: var(--tracking-label);
+}
+
+.colophon-links {
+  margin-top: var(--gap-stack-md);
+  display: flex;
+  gap: var(--gap-baseline);
+  flex-wrap: wrap;
+}
+
+/* 页脚 / 版权页脚 */
+.site-footer {
+  margin-top: var(--gap-page);
+  border-top: var(--rule-w) solid var(--ink);
+  padding: var(--footer-pad-top) 0 var(--footer-pad-bottom);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-stack-sm);
+  flex-wrap: wrap;
+}
+
+/* =============================================================================
+ * 4. 声音工具类：字号阶梯（.t-*）与竖排（.v-*）
+ *    页面组装时只挂类名，不写数值。竖排是结构件：书脊导航 / 章题 / 开场书名。
+ * ============================================================================= */
+.t-display {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--text-display);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-wide);
+  color: var(--ink);
+}
+
+.t-spine-brand {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--text-spine-brand);
+  letter-spacing: var(--tracking-brand);
+}
+
+.t-headline {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--text-headline);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-head);
+}
+
+.t-subtitle {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--text-subtitle);
+  letter-spacing: var(--tracking-head);
+}
+
+.t-title {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-entry);
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-tight);
+}
+
+.t-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-soft);
+}
+
+.t-no {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  letter-spacing: var(--tracking-mono);
+  color: var(--cinnabar);
+}
+
+/* 正文两种密度：手记/简介用 .t-body，散文长文用 .t-body-lead（行长 ≤66ch） */
+.t-body {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  max-width: var(--measure);
+}
+
+.t-body-lead {
+  font-size: var(--text-body-lead);
+  line-height: var(--leading-body);
+  max-width: var(--measure);
+}
+
+.t-body-lead p + p {
+  margin-top: var(--para-gap);
+}
+
+.t-body em {
+  font-style: normal;
+  color: var(--cinnabar);
+  font-weight: var(--weight-em);
+}
+
+/* 首字下沉：随笔开场（宋体 900 · 朱砂） */
+.dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-book);
+  font-size: var(--dropcap-size);
+  float: left;
+  line-height: 1;
+  padding: var(--dropcap-pad);
+  color: var(--cinnabar);
+}
+
+/* 竖排：中文结构件用 upright；拉丁竖列不翻转字身 */
+.v-writing {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+.v-latin {
+  writing-mode: vertical-rl;
+}
+
+/* 开场书名锁排容器：竖排大 CJK + 竖排拉丁列（SiteMark variant="display" 的两个子节点） */
+.bookname {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap-bookname);
+}
+
+/* 闲章：图版右上角的朱砂描边圆印（如「精选帧」）。全站唯一的圆角在这里与 .seal 之外。 */
+.stamp {
+  position: absolute;
+  top: var(--stamp-inset);
+  right: var(--stamp-inset);
+  width: var(--stamp-size);
+  height: var(--stamp-size);
+  border-radius: var(--radius-circle);
+  border: var(--stamp-border-w) solid var(--cinnabar);
+  color: var(--cinnabar);
+  background: var(--scrim-paper);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-serif);
+  font-size: var(--text-label-sm);
+  font-weight: var(--weight-entry);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-stamp);
+  text-align: center;
+}
+
+/* 朱砂记号（※ 示例标注、页边批注）：行内唯一允许的强调 */
+.mark,
+.demo {
+  color: var(--cinnabar);
+  font-weight: var(--weight-em);
+}
+
+/* 目次（dot-leader 目录行）——系列列表 / 首页目次共用 */
+.toc {
+  list-style: none;
+  display: grid;
+  border-top: var(--rule-w) solid var(--ink);
+}
+
+.toc a {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-toc);
+  padding: var(--toc-pad-y) var(--toc-pad-x);
+  border-bottom: var(--rule-w) solid var(--rule);
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.toc a:hover {
+  background: var(--paper-deep);
+}
+
+.toc .no {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--cinnabar);
+  letter-spacing: var(--tracking-wide);
+  min-width: var(--toc-no-w);
+}
+
+.toc .name {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-entry);
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+}
+
+.toc .dots {
+  flex: 1;
+  border-bottom: var(--rule-w) dotted var(--ink-soft);
+  transform: translateY(var(--toc-dots-offset));
+}
+
+.toc .meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* =============================================================================
+ * 5. 动效层：入场 rise 的一次编排（Base.astro 的脚本负责加 .is-in 与错峰延迟）
+ *    · 隐藏态只在 html.js（脚本可用）+ 用户不排斥动效时生效；
+ *    · prefers-reduced-motion: reduce 或无 JS 时全部内容直出，不做任何位移/裁切。
+ * ============================================================================= */
+@media (prefers-reduced-motion: no-preference) {
+  html.js .rise {
+    opacity: 0;
+    transform: translateY(var(--rise-y));
+    clip-path: inset(0 0 var(--rise-clip) 0);
+  }
+
+  html.js .rise.is-in {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+    transition:
+      opacity var(--dur-rise) var(--ease),
+      transform var(--dur-rise) var(--ease),
+      clip-path var(--dur-rise) var(--ease);
+  }
+
+  /* View Transition：图版 ↔ 灯箱像的形变（命名在回调内转移，结束后必须清除） */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(plate),
+  ::view-transition-new(plate) {
+    animation-duration: var(--dur-morph);
+    animation-timing-function: var(--ease);
+  }
+}
+
+/* 降级：无脚本时显式直出，不允许任何隐藏态残留 */
+html:not(.js) .rise {
+  opacity: 1;
+  transform: none;
+  clip-path: none;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* =============================================================================
+ * 6. 窄屏（≤900px，design.json page-narrow）：书脊转吸顶横条 · 多栏归一 · Display 转横排
+ * ============================================================================= */
+@media (max-width: 900px) {
+  :root {
+    --spine-w: var(--spine-w-narrow);
+  }
+
+  .spine {
+    position: sticky;
+    flex-direction: row;
+    width: 100%;
+    height: var(--spine-h-narrow);
+    top: 0;
+    padding: 0 var(--spine-pad-narrow-x);
+    justify-content: space-between;
+    align-items: center;
+    border-right: 0;
+    border-bottom: var(--rule-w) solid var(--rule);
+  }
+
+  .spine::after {
+    display: none;
+  }
+
+  .spine-brand {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spine-brand-gap);
+  }
+
+  .spine-rule {
+    width: var(--spine-rule-w-narrow);
+    height: var(--rule-w);
+  }
+
+  .spine-nav {
+    flex-direction: row;
+    gap: var(--spine-nav-gap-narrow);
+  }
+
+  /* 横条里不许折行：品牌三字与两字栏目名都要成块 */
+  .spine-brand,
+  .spine-nav,
+  .spine-nav a {
+    white-space: nowrap;
+  }
+
+  .spine-nav a {
+    font-size: var(--text-nav-narrow);
+    letter-spacing: var(--tracking-brand);
+  }
+
+  .seal {
+    width: var(--seal-size-narrow);
+    height: var(--seal-size-narrow);
+    font-size: var(--text-label-sm);
+  }
+
+  /* 竖排结构件转横排 */
+  .v-writing,
+  .v-latin {
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+  }
+
+  .t-spine-brand {
+    font-size: var(--text-label-lg);
+    letter-spacing: var(--tracking-brand);
+  }
+
+  .t-display {
+    font-size: var(--text-display-narrow);
+    letter-spacing: var(--tracking-brand);
+    white-space: nowrap;
+  }
+
+  /* 多栏归一 */
+  .spread,
+  .duo,
+  .duo-rev,
+  .essay,
+  .colophon {
+    grid-template-columns: 1fr;
+  }
+
+  .spread {
+    min-height: 0;
+    gap: var(--gap-stack-md);
+    padding-top: var(--gap-duo);
+  }
+
+  .spread-quiet {
+    justify-content: flex-start;
+  }
+
+  .chapter-sub {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}

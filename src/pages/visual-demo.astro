@@ -1,0 +1,379 @@
+---
+/* ============================================================================
+ * visual-demo.astro —— 临时演示路由 /visual-demo/（visual-system 任务 11）
+ *
+ * 用途：把 token、书脊、三件套、1/3 文字 · 2/3 图版的跨页比例摆在同一页上，
+ *      一侧对照 doc/preview/home.html 视觉稿，一侧给 e2e 当被测页（tests/e2e/visual-system.spec.ts）。
+ * 它不是首页，也不承载内容：真正的首页 / 系列 / 随笔 / 关于由后续模块实现。
+ *
+ * 图源与宽高都走真通道（contentImageUrl + sidecar 真实像素），所以本页同时是
+ * 「图片 URL 单一出口」与「显式宽高防布局抖动」的活体检查。
+ * 出现「※示例」的行，值都是编造的占位（design.json：未经标注不得展示虚构数据）。
+ * ==========================================================================*/
+import Base from '../layouts/Base.astro';
+import PhotoPlate from '../components/PhotoPlate.astro';
+import ExifCard from '../components/ExifCard.astro';
+import SiteMark from '../components/SiteMark.astro';
+import { contentImageUrl, entryResourceDir } from '../utils/contentImages';
+import type { PhotoSidecar } from '../types/photoSidecar';
+import sidecarJson from '../content/series/daily-frames/photos.meta.json';
+
+/** 演示用的真条目：series/daily-frames（导入脚本产出的 sidecar 与图片都在里面）。 */
+const entryDir = entryResourceDir('series', 'daily-frames/index.md');
+const photos = sidecarJson as unknown as PhotoSidecar;
+const [portrait, second, third, fourth] = photos;
+
+const urlOf = (rel: string) => contentImageUrl(entryDir, rel);
+
+/** 色板：四色 + 派生阶。值只存在于 global.css，本页只引用 var()。 */
+const swatches: Array<{ value: string; role: string }> = [
+  { value: 'var(--paper)', role: '纸白 · 地' },
+  { value: 'var(--ink)', role: '墨 · 正文' },
+  { value: 'var(--cinnabar)', role: '朱砂 · 盖章级（≤5%）' },
+  { value: 'var(--night)', role: '夜底 · 灯箱' },
+  { value: 'var(--paper-deep)', role: '纸白 6 · 悬停底' },
+  { value: 'var(--rule)', role: '纸白 5 · 发丝栏线' },
+  { value: 'var(--ink-soft)', role: '墨 5 · 次级文字' },
+  { value: 'var(--cinnabar-deep)', role: '朱砂 3 · 按压态' },
+];
+
+/** 字号阶梯：与 DESIGN.md §3 的表同源。 */
+const scale: Array<{ cls: string; name: string; value: string; use: string }> = [
+  { cls: 't-display', name: '书名体 Display', value: 'var(--text-display)', use: '开场竖排书名 · 全站一处' },
+  { cls: 't-headline', name: '章节题 Headline', value: 'var(--text-headline)', use: '系列名 / 目次 / 随笔 / 版权页' },
+  { cls: 't-subtitle', name: '小节题 Subtitle', value: 'var(--text-subtitle)', use: '版权页小节' },
+  { cls: 't-title', name: '条目题 Title', value: 'var(--text-title)', use: '目次行条目、拍摄单题名' },
+  { cls: 't-body-lead', name: '正文 Body', value: 'var(--text-body)', use: '16.5 / 行高 1.9 / 行长 ≤66ch（§10 定值）' },
+  { cls: 't-label', name: '微标签 Label', value: 'var(--text-label)', use: '册号、帧号、日期、EXIF、页脚' },
+];
+---
+
+<Base
+  title="视觉系统演示 · 柚 · Justyou"
+  current="none"
+  description="视觉系统 token、书脊与三件套组件的对照演示页（非正式页面）。"
+>
+  <div class="wrap">
+    <!-- 1. 开场跨页：1/3 文字 · 2/3 图版（对照 home.html 的 .opening） -->
+    <section class="spread" aria-label="开场跨页演示">
+      <div class="spread-quiet rise">
+        <h1 class="bookname">
+          <SiteMark variant="display" />
+        </h1>
+        <p class="t-body intro">
+          一个人的街拍档案。镜头跟着巷子走：<em>红灯笼、幌子、伞面下的集市</em>，和岭南县城被日光晒软的午后。<span class="demo">※示例文案</span>
+        </p>
+        <div class="index-note">
+          <span class="mono">本期收录 · No.01 · 共 {photos.length} 帧</span>
+          <span class="mono">摄于 2026.09 · 广东顺德大良 / 逢简</span>
+          <span class="mono">机 · Panasonic Lumix GX85</span>
+        </div>
+      </div>
+
+      <PhotoPlate
+        class="rise"
+        src={urlOf(portrait.file)}
+        width={portrait.width}
+        height={portrait.height}
+        alt="逢简旧巷：撑蓝格伞的白衣行人，两侧红幡高悬"
+        loading="eager"
+        fetchpriority="high"
+        frame="01 / 01"
+        data-frame="0"
+      >
+        <span class="stamp" aria-hidden="true">精选<br />帧</span>
+        <ExifCard title="逢简 · 伞与幡" exif={portrait.exif} />
+      </PhotoPlate>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- 2. 系列跨页节奏：左右对置栏（手记 · 图版）+ 拍摄单真值 -->
+    <section aria-label="跨页与对置栏演示">
+      <div class="chapter-head rise">
+        <span class="chapter-no">No.01</span>
+        <h2 class="t-headline">三件套 · 跨页</h2>
+        <span class="chapter-sub">{`${photos.length} FRAMES · 2026.09.17`}</span>
+      </div>
+
+      <PhotoPlate
+        class="rise"
+        src={urlOf(second.file)}
+        width={second.width}
+        height={second.height}
+        alt="灯笼街：红黄灯笼悬满街口，行人撑伞而行"
+        current={1}
+        total={photos.length}
+        data-frame="1"
+      >
+        <ExifCard title="逢简 · 灯笼街" exif={second.exif} />
+      </PhotoPlate>
+
+      <div class="duo">
+        <PhotoPlate
+          class="rise"
+          src={urlOf(third.file)}
+          width={third.width}
+          height={third.height}
+          alt="店内视角：玻璃窗外糖葫芦与橙色遮阳伞"
+          fit="cover"
+          aspect="4/3"
+          current={2}
+          total={photos.length}
+          data-frame="2"
+        />
+
+        <div>
+          <PhotoPlate
+            class="rise"
+            src={urlOf(fourth.file)}
+            width={fourth.width}
+            height={fourth.height}
+            alt="骑楼商铺：红黄布幡与灯笼沿街排开"
+            fit="cover"
+            aspect="4/3"
+            current={3}
+            total={photos.length}
+            data-frame="3"
+          >
+            <ExifCard
+              title="幌子与荫 · 布幡街（快门与 ISO 为占位）"
+              exif={{
+                camera: fourth.exif.camera,
+                lens: fourth.exif.lens,
+                focalLength: fourth.exif.focalLength,
+                aperture: fourth.exif.aperture,
+                shutter: '1/500',
+                iso: 200,
+                dateTaken: '2026.09.17',
+              }}
+              demoFields={['shutter', 'iso']}
+            />
+          </PhotoPlate>
+
+          <div class="note-margin rise">
+            <p>
+              快门与 ISO 是占位值，值后缀朱砂 <span class="demo">※</span>；其余字段出自 sidecar，是真值，不加标注。
+            </p>
+            <span class="mono">手记 · 示例文案</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- 3. 容错与页码片：缩略图通道（thumb + thumbWidth/thumbHeight）+ 缺字段 / 示例 / 全空 -->
+    <section aria-label="容错与页码片演示">
+      <div class="chapter-head rise">
+        <span class="chapter-no">NO.02</span>
+        <h2 class="t-headline">容错与页码片</h2>
+        <span class="chapter-sub">THUMB · MISSING FIELDS · FRAME CHIP</span>
+      </div>
+
+      <div class="trio rise">
+        <PhotoPlate
+          src={urlOf(portrait.thumb)}
+          width={portrait.thumbWidth}
+          height={portrait.thumbHeight}
+          alt="逢简旧巷缩略图：伞与幡"
+          current={4}
+          total={photos.length}
+          data-frame="4"
+        >
+          <ExifCard title="只有机型" exif={{ camera: portrait.exif.camera, aperture: null, iso: undefined }} />
+        </PhotoPlate>
+
+        <PhotoPlate
+          src={urlOf(second.thumb)}
+          width={second.thumbWidth}
+          height={second.thumbHeight}
+          alt="灯笼街缩略图：街口灯笼"
+          frame="No.02 · 草稿"
+        >
+          <ExifCard exif={{ aperture: 5.6, dateTaken: '2026-09-17' }} demo />
+        </PhotoPlate>
+
+        <PhotoPlate
+          src={urlOf(third.thumb)}
+          width={third.thumbWidth}
+          height={third.thumbHeight}
+          alt="窗内糖葫芦缩略图"
+        >
+          <!-- exif 全空：拍摄单整块不渲染，页面上不留空纸片 -->
+          <ExifCard exif={{}} />
+        </PhotoPlate>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- 4. 站点标识：四种锁排（书脊 / 开场 / 行内 / 方印） -->
+    <section aria-label="站点标识演示">
+      <div class="chapter-head rise">
+        <span class="chapter-no">MARK</span>
+        <h2 class="t-headline">站点标识</h2>
+        <span class="chapter-sub">柚 / JUSTYOU 并用</span>
+      </div>
+
+      <div class="mark-row rise">
+        <span class="mark-cell">
+          <SiteMark variant="inline" />
+          <span class="mono">inline</span>
+        </span>
+        <span class="mark-cell">
+          <SiteMark variant="seal" />
+          <span class="mono">seal</span>
+        </span>
+        <span class="mark-cell">
+          <SiteMark variant="spine" />
+          <span class="mono">spine</span>
+        </span>
+        <span class="mark-cell">
+          <span class="bookname">
+            <SiteMark variant="display" cjk="柚·街影" />
+          </span>
+          <span class="mono">display</span>
+        </span>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <!-- 5. Token 对照表：色与字号阶梯（值只存在于 global.css，本页只引用） -->
+    <section aria-label="Token 对照">
+      <div class="chapter-head rise">
+        <span class="chapter-no">TOKENS</span>
+        <h2 class="t-headline">色与字</h2>
+        <span class="chapter-sub">DESIGN.md §2 §3</span>
+      </div>
+
+      <ul class="swatches rise">
+        {
+          swatches.map((s) => (
+            <li>
+              <span class="swatch-chip" style={`background: ${s.value}`} />
+              <span class="mono">{s.role}</span>
+              <span class="swatch-name">{s.value}</span>
+            </li>
+          ))
+        }
+      </ul>
+
+      <ul class="scale rise">
+        {
+          scale.map((s) => (
+            <li>
+              <span class:list={['specimen', s.cls]}>甲乙街影 · Aa Gx 123</span>
+              <span class="mono">{`${s.name} / ${s.value}`}</span>
+              <span class="scale-use">{s.use}</span>
+            </li>
+          ))
+        }
+      </ul>
+
+      <div class="essay rise">
+        <p class="t-body-lead dropcap">
+          拍街的人都知道，最好的光线出现在你准备收工的那十分钟。本页只验证一件事：书脊、跨页比例、三件套与字号阶梯是否与设计同源。
+          <span class="demo">※示例文案</span>
+        </p>
+        <aside class="marginalia" aria-label="页边批注">
+          <p>
+            <span class="mark">※</span> 演示路由 /visual-demo/ 由 visual-system 模块临时保留，正式页面由后续模块实现。
+          </p>
+          <p>
+            <span class="mark">※</span> 全部颜色与字号来自 var()；本页与组件里不得出现第二处色值。
+          </p>
+          <p>
+            <span class="mark">※</span> 动效只有一条曲线；系统开启「减弱动效」后本页应无入场位移。
+          </p>
+        </aside>
+      </div>
+    </section>
+  </div>
+</Base>
+
+<style>
+  /* 演示页自己的排布家具：同样只用 token，不留设计字面量 */
+  .intro {
+    max-width: var(--measure-intro);
+  }
+
+  .trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--gap-duo);
+    align-items: start;
+  }
+
+  .mark-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--gap-baseline);
+    flex-wrap: wrap;
+    margin-top: var(--gap-duo);
+  }
+
+  .mark-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--gap-stack-sm);
+  }
+
+  .swatches,
+  .scale {
+    list-style: none;
+    display: grid;
+    gap: var(--gap-stack-sm);
+    margin-top: var(--gap-stack-md);
+  }
+
+  .swatches li {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-toc);
+    flex-wrap: wrap;
+  }
+
+  .swatch-chip {
+    width: var(--stamp-size);
+    height: var(--seal-size);
+    border: var(--rule-w) solid var(--rule);
+    display: inline-block;
+    flex: none;
+  }
+
+  .swatch-name,
+  .scale-use {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-sm);
+    color: var(--ink-mute);
+    letter-spacing: var(--tracking-label);
+  }
+
+  .scale-use {
+    margin-left: auto;
+  }
+
+  .scale li {
+    display: flex;
+    align-items: baseline;
+    gap: var(--gap-toc);
+    flex-wrap: wrap;
+    border-bottom: var(--rule-w) solid var(--rule);
+    padding-bottom: var(--gap-stack-sm);
+  }
+
+  .specimen {
+    display: block;
+    /* 样张里放的是长句，不能沿用书名那套 nowrap */
+    white-space: normal;
+  }
+
+  @media (max-width: 900px) {
+    .trio {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,161 @@
+---
+/* ============================================================================
+ * ExifCard.astro —— 拍摄单 / EXIF 说明签（三件套之一，visual-system 任务 9）
+ *
+ * 语义：压在图版右下角的纸白说明签。design.json 组件 Shotcard：宋体题名 + 等宽参数行。
+ * 数据源：照片 sidecar 的 exif 字段（src/types/photoSidecar.ts 的 Exif），
+ *        由 scripts/import-photos.mjs 从真实 EXIF 写入 —— 组件只读展示，绝不手写参数。
+ *
+ * 容错口径（§4「缺字段容错不显示」）：
+ *   - 任一字段 undefined / null / 空串 / 非有限数字 → 该项整段不输出；
+ *   - 全部字段缺失且无题名 → 整个说明签不渲染（不留空纸片）。
+ *
+ * 诚实口径（design.json rules / donts：「未经 ※示例 标注就展示虚构数据」是违规）：
+ *   - demo={true}            → 参数行末尾追加朱砂「※示例」（整张签都是示例数据时用）；
+ *   - demoFields={['f/…']}   → 只给指定字段后面缀朱砂「※」（个别字段是占位时用）。
+ *   ※ 记号的颜色只走 var(--cinnabar)，且必须与真数据同时出现时才标注，不得反过来伪造真值。
+ *
+ * 结构：根元素固定为 <figcaption> —— 拍摄单是「图版的说明签」，语义上必须活在 <figure> 里，
+ *       所以它总是作为 PhotoPlate 的 slot 内容出现（灯箱页边滑入的 sheet 由 lightbox 模块自建）。
+ * 硬约束：样式值全部来自 global.css 的 var()，本文件零色值/零 px 字面量。
+ * ==========================================================================*/
+import type { Exif } from '../types/photoSidecar';
+
+interface Props {
+  /** 图版题名（宋体那行），如「逢简 · 伞与幡」 */
+  title?: string;
+  /** sidecar 的 exif 本体；允许 null / undefined / 部分缺失 */
+  exif?: Exif | null;
+  /** 整张签的参数都是示例数据：末尾追加「※示例」 */
+  demo?: boolean;
+  /** 只有个别字段是示例/占位：在对应值后缀「※」 */
+  demoFields?: Array<keyof Exif>;
+  class?: string;
+}
+
+type ExifKey = keyof Exif;
+interface Item {
+  key: ExifKey;
+  text: string;
+  demo: boolean;
+}
+
+const { title, exif = null, demo = false, demoFields = [], class: extraClass } = Astro.props;
+
+/** 值是否真的存在：null / undefined / 空串 / NaN 都算缺失。 */
+function present(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
+/** 去掉浮点尾零：5 → "5"，2.8 → "2.8"，5.0 → "5"。 */
+function trimNum(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+}
+
+/** 快门：sidecar 可能是秒数数字，也可能是已格式化的分数串（"1/125"）。 */
+function fmtShutter(value: string | number): string {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return '';
+    if (value >= 1) return `${trimNum(value)}s`;
+    return `1/${Math.round(1 / value)}s`;
+  }
+  const raw = String(value).trim();
+  if (!raw) return '';
+  return /s$/i.test(raw) ? raw : `${raw}s`;
+}
+
+/** 日期：ISO 串或 Date → 印刷口径 YYYY.MM.DD；读不懂就原样显示，不编造。 */
+function fmtDate(value: string | Date): string {
+  const iso =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? ''
+        : value.toISOString().slice(0, 10)
+      : String(value).trim();
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(iso);
+  if (!m) return iso;
+  const [, y, mo, d] = m;
+  return `${y}.${mo.padStart(2, '0')}.${d.padStart(2, '0')}`;
+}
+
+/** 出字段值的唯一口径表（顺序 = design §4 的 EXIF 阅读顺序）。 */
+const FORMATTERS: Array<[ExifKey, (raw: NonNullable<Exif[ExifKey]>) => string]> = [
+  ['camera', (v) => String(v)],
+  ['lens', (v) => String(v)],
+  ['focalLength', (v) => `${trimNum(Number(v))}mm`],
+  ['aperture', (v) => `f/${trimNum(Number(v))}`],
+  ['shutter', (v) => fmtShutter(v as string | number)],
+  ['iso', (v) => `ISO${trimNum(Number(v))}`],
+  ['dateTaken', (v) => fmtDate(v as string | Date)],
+];
+
+const items: Item[] = FORMATTERS.flatMap(([key, format]) => {
+  const raw = exif?.[key];
+  if (!present(raw)) return [];
+  const text = format(raw as NonNullable<Exif[ExifKey]>);
+  if (!text) return [];
+  return [{ key, text, demo: demoFields.includes(key) }];
+});
+
+const hasBody = title !== undefined && title !== '';
+---
+
+{
+  hasBody || items.length > 0 ? (
+    <figcaption class:list={['shotcard', extraClass]}>
+      {hasBody ? <span class="t">{title}</span> : null}
+      {items.length > 0 ? (
+        <span class="m" data-demo={demo ? 'true' : undefined}>
+          {items.map((item, index) => (
+            <>
+              {index > 0 ? <span class="sep">{' · '}</span> : null}
+              <span data-field={item.key}>{item.text}</span>
+              {item.demo ? <span class="demo">{'※'}</span> : null}
+            </>
+          ))}
+          {demo ? <span class="demo">{'※示例'}</span> : null}
+        </span>
+      ) : null}
+    </figcaption>
+  ) : null
+}
+
+<style>
+  .shotcard {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    background: var(--paper);
+    border-top: var(--rule-w) solid var(--rule);
+    border-left: var(--rule-w) solid var(--rule);
+    padding: var(--shotcard-pad-top) var(--shotcard-pad-x) var(--shotcard-pad-bottom);
+    max-width: var(--shotcard-max-w);
+    box-shadow: var(--shadow-seal);
+  }
+
+  /* 题名＝宋体；参数行＝等宽，绝不互换（The Three Voices Rule） */
+  .t {
+    font-family: var(--font-serif);
+    font-size: var(--text-label-lg);
+    font-weight: var(--weight-entry);
+    letter-spacing: var(--tracking-head);
+    color: var(--ink);
+    display: block;
+  }
+
+  .m {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-sm);
+    letter-spacing: var(--tracking-head);
+    color: var(--ink-soft);
+    margin-top: var(--gap-stack-xs);
+    display: block;
+  }
+
+  .sep {
+    color: var(--ink-mute);
+  }
+</style>

@@ -1,0 +1,32 @@
+/* =============================================================================
+ * fonts.css —— 全站字体接入的唯一出处（visual-system 任务 3）
+ *
+ * 口径来源：doc/designv0.0.1.md §10「思源宋体（书名/章题 900）· 思源黑体（正文）·
+ * Courier Prime（页码/EXIF/微标签）」+ .impeccable/design.json typographyMeta
+ * + doc/preview/home.html 的 --serif / --sans / --mono 回退栈。
+ *
+ * 为什么不用 Google Fonts <link>（视觉稿里用的那种）：
+ *   1. 实测本机与部署侧到 fonts.googleapis.com 不可达（connect ETIMEDOUT），
+ *      访客多在国内，CDN 直连等于没有；
+ *   2. §6 性能预算要求首屏不依赖第三方域，自建字体文件才可控、可缓存。
+ *
+ * 实际落地（分声部，详见 DESIGN.md §3 字体）：
+ *   - 拉丁等宽（Courier Prime）：真字族，取自 @fontsource 的 latin 子集
+ *     （unicode-range 已切好，latin + latin-ext 各一档，合计约 40KB woff2）。
+ *     这是 §10 点名的「页码 / EXIF / 微标签」声部，也是全站唯一需要自建的字体。
+ *   - 中文（思源宋体 / 思源黑体）：走系统字体栈，**不下载中文字体文件**。
+ *     字族栈定义在 global.css 的 --font-serif / --font-sans（含 Noto Serif SC /
+ *     Source Han Serif SC / Songti SC / STSong / SimSun 等逐级回退）。
+ *     原因：思源全家桶任何一档单文件都在 1.4MB 量级、分片版每页仍要拉十几档
+ *     （约 350~700KB），与 §6「移动端 Lighthouse ≥90 + 展示图 ≤800KB/张」的
+ *     预算正面冲突。降级带来的跨端字形差异已在 DESIGN.md §3 与自检报告中登记，
+ *     升级路径（自建 @font-face + 只改一个字族 token）同样写在那里。
+ *
+ * 约定：字族名与 §10 保持同名（'Noto Serif SC' / 'Noto Sans SC' / 'Courier Prime'），
+ * 日后补上自建中文 @font-face 时，只需追加本文件的 @font-face，组件与 token 一行都不用改。
+ * ============================================================================= */
+
+/* Courier Prime —— 微标签/页码/EXIF 声部（打字机等宽） */
+@import '@fontsource/courier-prime/latin-400.css';
+@import '@fontsource/courier-prime/latin-700.css';
+@import '@fontsource/courier-prime/latin-400-italic.css';

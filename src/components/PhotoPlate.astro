@@ -1,0 +1,162 @@
+---
+/* ============================================================================
+ * PhotoPlate.astro —— 图版（三件套之一，visual-system 任务 7）
+ *
+ * 语义：照片「压在纸上」的那一块。视觉稿口径（doc/preview/home.html .plate / .spread-plate）：
+ *      落纸投影 --shadow-plate + 满宽自然比例 + cursor:zoom-in（点开灯箱）+ hover 呼吸级放大。
+ *      The Paper-Stack Rule：深度只有「图版压在纸上」这一种，不给 UI 加彩色光晕。
+ *
+ * ⚠️ 宽高必须是 sidecar 的真实像素（PhotoEntry.width / height 或 thumbWidth / thumbHeight）：
+ *    §6 性能预算要求「显式宽高占位防布局抖动」，所以这两个 prop 是必填、不给默认值。
+ *    src 也必须已经过 imageUrl() / contentImageUrl() 解析（§3 边界③：图片 URL 单一出口），
+ *    组件不接受也未解析的内容相对路径。
+ *
+ * 用法（首页 / 系列页 / 随笔页通用）：
+ *   <PhotoPlate src={contentImageUrl(dir, p.file)} width={p.width} height={p.height}
+ *               alt="……" current={i + 1} total={photos.length} data-frame={i}>
+ *     <ExifCard title="逢简 · 伞与幡" exif={p.exif} />
+ *     <span class="stamp">精选<br />帧</span>   <!-- 闲章：全局工具类，文字由页面给 -->
+ *   </PhotoPlate>
+ *
+ * 降级：prefers-reduced-motion 下 hover 缩放与 transition 全部直出（本文件媒体查询 +
+ *      global.css 的曲线总开关）。
+ * 硬约束：样式值全部来自 global.css 的 var()。
+ * ==========================================================================*/
+import PageChip from './PageChip.astro';
+
+interface Props {
+  /** 已经过 imageUrl()/contentImageUrl() 的可加载 URL（不得传未解析的内容相对路径） */
+  src: string;
+  /** sidecar 真实像素宽（显式宽高 = §6 防布局抖动） */
+  width: number;
+  /** sidecar 真实像素高 */
+  height: number;
+  /** 图像描述，必填（无描述写空串也要显式给，便于 §4 无障碍核验） */
+  alt: string;
+  /** §6 全部懒加载；仅首屏 LCP 那一张可显式传 eager */
+  loading?: 'lazy' | 'eager';
+  /** 高优先级提示（开场图给 'high'，其余交给 lazy） */
+  fetchpriority?: 'high' | 'low' | 'auto';
+  /** 帧号：给定 current（或 label）就在左下角压页码片 */
+  current?: number | string;
+  /** 总帧数 */
+  total?: number | string;
+  /** 已格式化好的帧号整串，优先级高于 current/total */
+  frame?: string;
+  /**
+   * 版式：
+   *   spread（默认）＝满宽自然比例，高度由显式宽高撑起 —— 跨页图版；
+   *   cover        ＝填满外层给定的框并裁切（左右对置的竖幅栏用），可配 aspect。
+   */
+  fit?: 'spread' | 'cover';
+  /** cover 模式下的宽高比，如 '4/3'；省略则沿用外层高度 */
+  aspect?: string;
+  /** 可点开灯箱（cursor: zoom-in + hover 呼吸），默认 true */
+  zoom?: boolean;
+  /** 落纸投影，默认 true；只有需要平贴在纸面时才关 */
+  shadow?: boolean;
+  /** 灯箱帧序号（lightbox 模块按 data-frame 取帧，与 home.html 视觉稿同口径） */
+  dataFrame?: number | string;
+  /** 图版下方的题注/说明（slot）：ExifCard、闲章等覆盖件 */
+  class?: string;
+  id?: string;
+}
+
+const {
+  src,
+  width,
+  height,
+  alt,
+  loading = 'lazy',
+  fetchpriority,
+  current,
+  total,
+  frame,
+  fit = 'spread',
+  aspect,
+  zoom = true,
+  shadow = true,
+  dataFrame,
+  class: extraClass,
+  id,
+} = Astro.props;
+---
+
+<figure
+  id={id}
+  data-frame={dataFrame}
+  class:list={[
+    'plate',
+    fit === 'cover' && 'plate--cover',
+    zoom && 'plate--zoom',
+    !shadow && 'plate--flat',
+    extraClass,
+  ]}
+  style={aspect ? `aspect-ratio: ${aspect}` : undefined}
+>
+  <img
+    src={src}
+    width={width}
+    height={height}
+    alt={alt}
+    loading={loading}
+    decoding="async"
+    fetchpriority={fetchpriority}
+  />
+  {
+    /* 页码片：给了 current / total / frame 才出现 */
+    frame !== undefined || current !== undefined ? (
+      <PageChip current={current} total={total} label={frame} />
+    ) : null
+  }
+  <slot />
+</figure>
+
+<style>
+  .plate {
+    position: relative;
+    margin: 0;
+    box-shadow: var(--shadow-plate);
+    overflow: hidden;
+  }
+
+  .plate--flat {
+    box-shadow: none;
+  }
+
+  /* spread：满宽自然比例。显式 width/height 属性已经把盒子撑好，不靠 intrinsic 尺寸猜测 */
+  .plate > img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* cover：填满外层框并裁切（对置栏里的竖幅用） */
+  .plate--cover > img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .plate--zoom {
+    cursor: zoom-in;
+  }
+
+  /* 呼吸级 hover：只有一点点，照片是主角 */
+  .plate--zoom > img {
+    transition: transform var(--dur-hover) var(--ease);
+  }
+
+  .plate--zoom:hover > img,
+  .plate--zoom:focus-visible > img {
+    transform: var(--plate-zoom);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .plate--zoom > img,
+    .plate--zoom:hover > img,
+    .plate--zoom:focus-visible > img {
+      transition: none;
+      transform: none;
+    }
+  }
+</style>

@@ -1,0 +1,54 @@
+{
+  "locale": "zh-CN",
+  "name": {
+    "cjk": "柚",
+    "latin": "Justyou",
+    "latinUpper": "JUSTYOU",
+    "spine": "柚影集",
+    "display": "柚 · Justyou"
+  },
+  "bookName": {
+    "cjk": "柚·街影",
+    "latin": "JUSTYOU · FIELD PHOTOS"
+  },
+  "description": "个人摄影影集：按系列成册的街拍档案，照片为主，界面退后。",
+  "nav": [
+    { "key": "home", "href": "/", "label": "开卷" },
+    { "key": "series", "href": "/series/", "label": "系列" },
+    { "key": "posts", "href": "/posts/", "label": "随笔" },
+    { "key": "about", "href": "/about/", "label": "版权页" }
+  ],
+  "footer": {
+    "note": "柚 · JUSTYOU —— 个人摄影影集",
+    "copyright": "© 2026 柚"
+  },
+  "colophon": [
+    { "term": "相机", "value": "Panasonic Lumix GX85" },
+    { "term": "后期", "value": "Adobe Photoshop" },
+    { "term": "印制", "value": "静态站点 · Cloudflare Pages" },
+    { "term": "版式", "value": "思源宋体 / 思源黑体 / Courier Prime" },
+    { "term": "收录", "value": "2026.09 起 · 顺德大良 / 逢简" }
+  ],
+  "social": [
+    { "key": "instagram", "label": "Instagram", "href": "#", "placeholder": true },
+    { "key": "email", "label": "邮箱", "href": "#", "placeholder": true }
+  ],
+  "contact": { "email": "", "placeholder": true },
+  "intro": { "sample": true, "text": "一个人的街拍档案。镜头跟着巷子走：红灯笼、幌子、伞面下的集市，和岭南县城被日光晒软的午后。按系列成册，不定期增补。" },
+  "indexNote": {
+    "sample": true,
+    "lines": [
+      "本期收录 · No.01–No.02 · 共 5 帧",
+      "摄于 2026.09 · 广东顺德大良 / 逢简",
+      "机 · Panasonic Lumix GX85"
+    ]
+  },
+  "featured": { "photos": [] },
+  "$comments": {
+    "purpose": "站点级事实数据（visual-system 模块引入）：Base 的书脊导航/页脚、关于页（版权页）的社交与制作信息都从这里取，页面不得再硬编码这些字符串。",
+    "sources": "口径来源 = PRODUCT.md（品牌与设备事实）+ doc/designv0.0.1.md §10 + doc/preview/home.html。",
+    "nav": "四项 = 首页 / 系列列表 / 随笔列表 / 关于（design §5 页面清单）。label 用视觉稿的书脊措辞（开卷…版权页），href 是路由真值；当前项由 Base.astro 的 current prop 决定 aria-current。",
+    "placeholder": "social[].placeholder / contact.placeholder / intro.sample / indexNote.sample = true 表示值尚未由作者确认为真——渲染时必须带朱砂 ※示例 标注（design.json 规则：未经 ※示例 标注不得展示虚构数据）。",
+    "featured": "首页精选区挑图（design §2「站点级内容：首页精选区（手动挑选入口图）」）故意留空，由 home-page 模块按需补加字段；建议元素形状 { collection, id, file, title }。"
+  }
+}

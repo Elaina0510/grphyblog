@@ -1,0 +1,60 @@
+---
+/* ============================================================================
+ * PageChip.astro —— 页码片（三件套之一，visual-system 任务 8）
+ *
+ * 语义：图版左下角的帧号 = 这本书的「页码」。design.json 组件 Frame-chip：
+ *       等宽纸白字压在 84% 墨底上（--scrim-night）。
+ * 用法：
+ *   <PageChip current={1} total={3} />   → 01 / 03（数字自动补零）
+ *   <PageChip label="02 / 03" />         → 原样显示（页面自己已格式化时）
+ * 约定：本组件不猜册号语义，只做「帧 / 总帧」显示；灯箱切帧后的 aria-live 由 lightbox 模块负责。
+ * 硬约束：样式值全部来自 global.css 的 var()，组件层零字面量（见 tests/unit/design-no-hardcode.test.ts）。
+ * ==========================================================================*/
+interface Props {
+  /** 当前帧号（数字会自动补零成两位） */
+  current?: number | string;
+  /** 总帧数（同上） */
+  total?: number | string;
+  /** 已经格式化好的整串，给了它就原样显示 */
+  label?: string;
+  class?: string;
+}
+
+const { current, total, label, class: extraClass } = Astro.props;
+
+/** 数字补零到两位（1 → "01"）；字符串原样（允许 "1" / "01" / "iii"）。 */
+function pad(value: number | string): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? String(value).padStart(2, '0')
+    : String(value);
+}
+
+const text: string =
+  label !== undefined && label !== ''
+    ? label
+    : current !== undefined && total !== undefined
+      ? `${pad(current)} / ${pad(total)}`
+      : current !== undefined
+        ? pad(current)
+        : '';
+---
+
+{
+  text ? <span class:list={['frame-chip', extraClass]}>{text}</span> : null
+}
+
+<style>
+  .frame-chip {
+    position: absolute;
+    left: var(--chip-inset-left);
+    bottom: var(--chip-inset-bottom);
+    font-family: var(--font-mono);
+    font-size: var(--text-label-sm);
+    letter-spacing: var(--tracking-wide);
+    color: var(--paper);
+    background: var(--scrim-night);
+    padding: var(--chip-pad-y) var(--chip-pad-x);
+    /* 零圆角是全站规则（印章除外） */
+    border-radius: 0;
+  }
+</style>

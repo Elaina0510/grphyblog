@@ -1,0 +1,108 @@
+---
+/* ============================================================================
+ * SiteMark.astro —— 站点标识：柚（中文）/ Justyou（拉丁）并用（visual-system 任务 10）
+ *
+ * 事实源：PRODUCT.md「Brand Commitments：站名 Justyou（英文）/ 柚（中文），两者并存使用」
+ *        + doc/designv0.0.1.md §10「个人标识：柚（中文）/ Justyou（拉丁），并用方案已在视觉稿验证」
+ *        + doc/surface-brief-home.md 的落地形态记录（书脊用「柚影集」三字连排，
+ *          Justyou 由拉丁竖列与页脚承载）。
+ * 字符串一律取自 src/data/site.json，组件内不硬编码品牌字。
+ *
+ * 四个变体（都是「锁排」，不是「标题」—— 标题语义由页面自己包 h1/h2）：
+ *   spine    书脊品牌字：竖排宋体 900「柚影集」
+ *   display  开场书名锁排：竖排大字 + 拉丁竖列（两个兄弟节点，页面把它们包进 h1.bookname）
+ *   inline   单行「柚 · Justyou」：页脚 / 404 / 关于页用
+ *   seal     朱砂方印「柚」：书脊末端署名（复用 global.css 的 .seal）
+ *
+ * 三声部：中文走 --font-serif（书），拉丁走 --font-mono（数）；不越界。
+ * ==========================================================================*/
+import site from '../data/site.json';
+
+interface Props {
+  variant?: 'spine' | 'display' | 'inline' | 'seal';
+  /** 覆盖中文那部分（默认：spine 用 name.spine，其余用 name.cjk） */
+  cjk?: string;
+  /** 覆盖拉丁那部分（默认：name.latin） */
+  latin?: string;
+  /** display 变体的拉丁竖列文案（默认：bookName.latin） */
+  tagline?: string;
+  class?: string;
+}
+
+const { variant = 'inline', cjk, latin, tagline, class: extraClass } = Astro.props;
+
+const cjkText = cjk ?? (variant === 'spine' ? site.name.spine : site.name.cjk);
+const latinText = latin ?? site.name.latin;
+const taglineText = tagline ?? site.bookName.latin;
+---
+
+{
+  variant === 'spine' ? (
+    <span class:list={['site-mark', 'site-mark--spine', 't-spine-brand', 'v-writing', extraClass]}>
+      {cjkText}
+    </span>
+  ) : null
+}
+
+{
+  variant === 'display' ? (
+    <>
+      <span class:list={['site-mark__cjk', 't-display', 'v-writing', extraClass]}>
+        {cjk ?? site.bookName.cjk}
+      </span>
+      <span class:list={['site-mark__latin', 't-label', 'v-latin']} aria-label={`${latinText} Photography`}>
+        {taglineText}
+      </span>
+    </>
+  ) : null
+}
+
+{
+  variant === 'inline' ? (
+    <span class:list={['site-mark', 'site-mark--inline', extraClass]}>
+      <span class="cjk">{cjkText}</span>
+      <span class="dot" aria-hidden="true">
+        ·
+      </span>
+      <span class="latin">{latinText}</span>
+    </span>
+  ) : null
+}
+
+{
+  variant === 'seal' ? (
+    <span class:list={['seal', extraClass]} aria-hidden="true">
+      {cjkText}
+    </span>
+  ) : null
+}
+
+<style>
+  /* inline：中文用书名体、拉丁用等宽，两者同线基 */
+  .site-mark--inline {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--gap-stack-xs);
+  }
+
+  .site-mark--inline .cjk {
+    font-family: var(--font-serif);
+    font-weight: var(--weight-book);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .site-mark--inline .dot {
+    color: var(--ink-mute);
+  }
+
+  .site-mark--inline .latin {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    letter-spacing: var(--tracking-wide);
+  }
+
+  /* display 的拉丁竖列与大字之间的基线错位，由 .bookname 的 flex 对齐负责（global.css） */
+  .site-mark__latin {
+    padding-top: var(--gap-stack-xs);
+  }
+</style>
