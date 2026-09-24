@@ -25,12 +25,15 @@ describe('build 冒烟（npm run build）', () => {
     expect(buildOut + '\n').not.toMatch(/error TS|Invalid config|Cannot find module|ENOENT/i);
   });
 
-  it('产出 dist/index.html（静态首页）', () => {
+  it('产出 dist/index.html（真实首页：四区齐备、无骨架占位）', () => {
     const distIndex = resolve(ROOT, 'dist/index.html');
     expect(existsSync(distIndex)).toBe(true);
     const html = readFileSync(distIndex, 'utf8');
     expect(html.toLowerCase()).toContain('<!doctype html>');
-    expect(html).toContain('骨架占位首页');
+    expect(html).not.toContain('骨架占位首页');
+    for (const region of ['开卷', '精选', '最新系列', '最新随笔']) {
+      expect(html, `首页缺「${region}」区`).toContain(region);
+    }
   });
 
   it('构建产物 dist/ 不进仓库（.gitignore 已排除）', () => {

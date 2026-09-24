@@ -1,18 +1,430 @@
 ---
-// 骨架首页：仅保证空站可 dev / build。
-// 视觉与信息架构由 visual-system、home-page 模块按 DESIGN.md 实施。
+/* ============================================================================
+ * index.astro —— 首页（home-page 任务 2–8）：翻「跨页」而非扫网格
+ *
+ * 结构（对照 doc/preview/home.html + DESIGN §5）：
+ *   ① 开场跨页  —— 1/3 文字 · 2/3 图版（.spread / .spread-quiet 家具类）
+ *   ② 精选区    —— 读 site.json.featured.photos（手动挑图，改 JSON 即生效、不碰代码）
+ *   ③ 最新系列  —— getPublishedSeries()（排 draft）按 order/日期取前 N，卡片=封面+标题+日期+张数
+ *   ④ 最新随笔  —— getPublishedPosts() 时间倒序取前 N，卡片=标题+日期+摘要/封面
+ *
+ * 硬约束（勿偏离）：
+ *   - 复用 Base.astro（书脊 + 导航 + 页脚 + 入场编排），页面不重写骨架；
+ *   - 图片一律 PhotoPlate：显式 width/height（sidecar 真值）+ loading="lazy"（首屏 LCP 例外 eager+high）；
+ *   - 图片 URL 只经 contentImageUrl / entryResourceDir（边界③）；宽高只从 sidecar 取，绝不写死；
+ *   - 导航/品牌串只从 site.json 取（SiteMark / Base 已处理），页面不硬编码；
+ *   - sample/placeholder 字段（intro / indexNote）渲染必带朱砂 ※示例（诚实口径）；
+ *   - v1 无分页 / 无标签页 / 无搜索；朱砂仅盖章级 ≤5%；
+ *   - 样式值走 var(--token)，页面 <style> 不出现裸色值 / 曲线 / 字面尺寸（仅 fr / var / 关键字）。
+ * ==========================================================================*/
+import Base from '../layouts/Base.astro';
+import PhotoPlate from '../components/PhotoPlate.astro';
+import ExifCard from '../components/ExifCard.astro';
+import SiteMark from '../components/SiteMark.astro';
+import site from '../data/site.json';
+import { getPublishedPosts, getPublishedSeries } from '../utils/collections';
+import { contentImageUrl, contentImageMap, entryResourceDir } from '../utils/contentImages';
+import { resolveSeriesCount } from '../utils/photoCount';
+import type { Exif, PhotoEntry, PhotoSidecar } from '../types/photoSidecar';
+
+/** 取前 N 的窗口（视觉稿 3–4 条的节奏；数据不足时按实际条数渲染）。 */
+const LATEST_SERIES_N = 4;
+const LATEST_POSTS_N = 3;
+
+/* ---- 资源解析：内容夹 photos.meta.json 建成「目录 -> 数组」映射；兜底文件走 contentImageMap ---- */
+const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, PhotoSidecar>;
+
+/** 资源目录（相对 src/content，如 `series/city-lights`）→ 该条目的 sidecar 数组。 */
+const sidecarByDir: Record<string, PhotoSidecar> = {};
+for (const [key, mod] of Object.entries(sidecarModules)) {
+  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
+  sidecarByDir[dir] = mod;
+}
+
+/** 某条目 photos/ 下的图片路径列表（含缩略图；兜底计数内部会排除 .thumb.webp）。 */
+function photosUnder(dir: string): string[] {
+  const prefix = `${dir}/photos/`;
+  return Object.keys(contentImageMap).filter((k) => k.startsWith(prefix));
+}
+
+/** 构建期缺 sidecar 的告警出口（注入给纯函数 resolveSeriesCount）。 */
+function warnMissingSidecar(message: string): void {
+  console.warn(message);
+}
+
+/**
+ * 由 collection + id + 相对路径解析出可渲染的照片：URL + sidecar 条目（真实宽高 / EXIF）。
+ * 找不到 sidecar 条目（缺宽高 = §6 硬约束不可接受）时返回 null，调用方据此跳过该图，绝不写死尺寸。
+ */
+function resolvePhoto(
+  collection: string,
+  id: string,
+  file: string,
+): { dir: string; url: string; thumbUrl: string; entry: PhotoEntry } | null {
+  const dir = entryResourceDir(collection, id);
+  const entry = (sidecarByDir[dir] ?? []).find((e) => e.file === file);
+  if (!entry) return null;
+  return {
+    dir,
+    url: contentImageUrl(dir, file),
+    thumbUrl: contentImageUrl(dir, entry.thumb),
+    entry,
+  };
+}
+
+/* ---- 日期口径：统一 UTC 取日期部分，避免按本地时区偏移一天（与 ExifCard 同口径）---- */
+function fmtDate(value: Date | string): string {
+  const iso =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? ''
+        : value.toISOString().slice(0, 10)
+      : String(value).trim();
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(iso);
+  if (!m) return iso;
+  const [, y, mo, d] = m;
+  return `${y}.${mo.padStart(2, '0')}.${d.padStart(2, '0')}`;
+}
+
+/** 从 Markdown 正文抽一行纯文本摘要（去标记 / 折叠空白 / 截断），无正文返回空串。 */
+function excerpt(body: string, max = 96): string {
+  const text = String(body ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_`~]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/* ---- 内容查询（排 draft）：系列按 order/日期、随笔按时间倒序 ---- */
+const publishedSeries = await getPublishedSeries();
+const publishedPosts = await getPublishedPosts();
+const [firstSeries] = publishedSeries;
+
+/* ---- 精选区：site.json.featured.photos -> 解析后的可渲染项（缺 sidecar 的自动跳过）---- */
+interface Plate {
+  url: string;
+  width: number;
+  height: number;
+  alt: string;
+  title: string;
+  exif: Exif;
+}
+interface FeaturedItem extends Plate {
+  href: string;
+  dataFrame: string;
+}
+
+const featured: FeaturedItem[] = [];
+(site.featured?.photos ?? []).forEach(
+  (f: { collection: string; id: string; file: string; title?: string; alt?: string }, i) => {
+    const photo = resolvePhoto(f.collection, f.id, f.file);
+    if (!photo) return; // 挑了不存在的图：不渲染空板，也不伪造宽高
+    featured.push({
+      url: photo.url,
+      width: photo.entry.width,
+      height: photo.entry.height,
+      alt: f.alt ?? f.title ?? '精选照片',
+      title: f.title ?? '',
+      exif: photo.entry.exif,
+      href: `/${f.collection}/${f.id}/`,
+      dataFrame: String(i),
+    });
+  },
+);
+
+/* ---- 开场跨页 LCP 图：优先精选第一张，退回首个已发布系列封面；都从 sidecar 取真宽高 ---- */
+let opening: Plate | null = null;
+if (featured[0]) {
+  const f = featured[0];
+  opening = { url: f.url, width: f.width, height: f.height, alt: f.alt, title: f.title, exif: f.exif };
+} else if (firstSeries) {
+  const p = resolvePhoto('series', firstSeries.id, firstSeries.data.cover);
+  if (p) {
+    opening = {
+      url: p.url,
+      width: p.entry.width,
+      height: p.entry.height,
+      alt: `${firstSeries.data.title} · 封面`,
+      title: firstSeries.data.title,
+      exif: p.entry.exif,
+    };
+  }
+}
+
+/* ---- 最新系列卡片数据：张数走共享 photoCount（sidecar 优先、缺 sidecar 兜底告警）---- */
+interface SeriesCard {
+  href: string;
+  title: string;
+  dateText: string;
+  count: number;
+  cover: { url: string; width: number; height: number; alt: string } | null;
+}
+
+function orderKey(e: (typeof publishedSeries)[number]): number {
+  return Number.isFinite(e.data.order) ? e.data.order : Number.MAX_SAFE_INTEGER;
+}
+
+const latestSeries: SeriesCard[] = [...publishedSeries]
+  .sort((a, b) => {
+    const byOrder = orderKey(a) - orderKey(b);
+    return byOrder !== 0 ? byOrder : b.data.date.getTime() - a.data.date.getTime();
+  })
+  .slice(0, LATEST_SERIES_N)
+  .map((entry) => {
+    const dir = entryResourceDir('series', entry.id);
+    const folderId = dir.split('/').pop() ?? entry.id;
+    const count = resolveSeriesCount({
+      sidecar: sidecarByDir[dir] ?? null,
+      files: photosUnder(dir),
+      entryId: folderId,
+      onWarn: warnMissingSidecar,
+    });
+    const photo = resolvePhoto('series', entry.id, entry.data.cover);
+    return {
+      href: `/series/${folderId}/`,
+      title: entry.data.title,
+      dateText: fmtDate(entry.data.date),
+      count,
+      cover: photo
+        ? {
+            url: photo.thumbUrl,
+            width: photo.entry.thumbWidth,
+            height: photo.entry.thumbHeight,
+            alt: `${entry.data.title} · 封面`,
+          }
+        : null,
+    };
+  });
+
+/* ---- 最新随笔卡片：时间倒序取前 N，卡片=标题+日期+摘要/封面 ---- */
+interface PostCard {
+  href: string;
+  title: string;
+  dateText: string;
+  excerpt: string;
+  cover: { url: string; width: number; height: number; alt: string } | null;
+}
+
+const latestPosts: PostCard[] = [...publishedPosts]
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime())
+  .slice(0, LATEST_POSTS_N)
+  .map((entry) => {
+    const dir = entryResourceDir('posts', entry.id);
+    const folderId = dir.split('/').pop() ?? entry.id;
+    const photo = resolvePhoto('posts', entry.id, entry.data.cover);
+    return {
+      href: `/posts/${folderId}/`,
+      title: entry.data.title,
+      dateText: fmtDate(entry.data.date),
+      excerpt: excerpt(entry.body),
+      cover: photo
+        ? {
+            url: photo.thumbUrl,
+            width: photo.entry.thumbWidth,
+            height: photo.entry.thumbHeight,
+            alt: `${entry.data.title} · 插图`,
+          }
+        : null,
+    };
+  });
+
+/* indexNote / intro 是 sample 占位 -> 每行配 ※示例（诚实口径）。 */
+const noteLines: string[] = site.indexNote?.lines ?? [];
 ---
 
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>柚 · Justyou</title>
-    <meta name="description" content="个人摄影博客（骨架占位页）" />
-  </head>
-  <body>
-    <h1>骨架占位首页</h1>
-    <p>项目骨架已就绪，内容与视觉由后续模块实现。</p>
-  </body>
-</html>
+<Base current="home">
+  <!-- ① 开场跨页：1/3 文字 · 2/3 图版 -->
+  <div class="wrap">
+    <section class="spread" aria-label="开卷">
+      <div class="spread-quiet rise">
+        <h1 class="bookname">
+          <SiteMark variant="display" />
+        </h1>
+        <p class="t-body intro">
+          {site.intro?.text}
+          {site.intro?.sample ? <span class="demo">※示例</span> : null}
+        </p>
+        <div class="index-note">
+          {
+            noteLines.map((line) => (
+              <span class="mono">
+                {line}
+                {site.indexNote?.sample ? <span class="demo">※示例</span> : null}
+              </span>
+            ))
+          }
+        </div>
+      </div>
+
+      {
+        opening ? (
+          <PhotoPlate
+            class="rise"
+            src={opening.url}
+            width={opening.width}
+            height={opening.height}
+            alt={opening.alt}
+            loading="eager"
+            fetchpriority="high"
+            data-frame={featured[0] ? featured[0].dataFrame : '0'}
+          >
+            <span class="stamp" aria-hidden="true">
+              精选<br />帧
+            </span>
+            <ExifCard title={opening.title} exif={opening.exif} />
+          </PhotoPlate>
+        ) : null
+      }
+    </section>
+  </div>
+
+  <!-- ② 精选区：入口图 = 图版 + 页码片，链到对应系列详情（灯箱接线留 lightbox 模块，先预留 data-frame） -->
+  {
+    featured.length > 0 ? (
+      <div class="wrap">
+        <section aria-label="精选">
+          <div class="chapter-head rise">
+            <span class="chapter-no">FEATURED</span>
+            <h2 class="t-headline">精选</h2>
+            <span class="chapter-sub">{`手动挑图 · ${featured.length} 帧`}</span>
+          </div>
+          <div class="home-grid home-grid--featured rise">
+            {featured.map((item, i) => (
+              <a class="home-entry" href={item.href}>
+                <PhotoPlate
+                  src={item.url}
+                  width={item.width}
+                  height={item.height}
+                  alt={item.alt}
+                  fit="cover"
+                  aspect="4/3"
+                  current={i + 1}
+                  total={featured.length}
+                  data-frame={item.dataFrame}
+                />
+                <span class="home-entry__title t-title">{item.title}</span>
+                <span class="mono">进册 →</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      </div>
+    ) : null
+  }
+
+  <!-- ③ 最新系列：封面 + 标题 + 日期 + 张数（张数复用共享 photoCount） -->
+  {
+    latestSeries.length > 0 ? (
+      <div class="wrap">
+        <section aria-label="最新系列">
+          <div class="chapter-head rise">
+            <span class="chapter-no">SERIES</span>
+            <h2 class="t-headline">最新系列</h2>
+            <span class="chapter-sub">{`已收录 ${latestSeries.length} 册`}</span>
+          </div>
+          <div class="home-grid rise">
+            {latestSeries.map((card) => (
+              <a class="home-entry" href={card.href}>
+                {card.cover ? (
+                  <PhotoPlate
+                    src={card.cover.url}
+                    width={card.cover.width}
+                    height={card.cover.height}
+                    alt={card.cover.alt}
+                    fit="cover"
+                    aspect="4/3"
+                    zoom={false}
+                  />
+                ) : null}
+                <span class="home-entry__title t-title">{card.title}</span>
+                <span class="mono">{`${card.count} 帧 · ${card.dateText}`}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      </div>
+    ) : null
+  }
+
+  <!-- ④ 最新随笔：标题 + 日期 + 摘要/封面（时间倒序） -->
+  {
+    latestPosts.length > 0 ? (
+      <div class="wrap">
+        <section aria-label="最新随笔">
+          <div class="chapter-head rise">
+            <span class="chapter-no">ESSAYS</span>
+            <h2 class="t-headline">最新随笔</h2>
+            <span class="chapter-sub">文字为主 · 插图为辅</span>
+          </div>
+          <div class="home-grid rise">
+            {latestPosts.map((card) => (
+              <a class="home-entry" href={card.href}>
+                {card.cover ? (
+                  <PhotoPlate
+                    src={card.cover.url}
+                    width={card.cover.width}
+                    height={card.cover.height}
+                    alt={card.cover.alt}
+                    fit="cover"
+                    aspect="4/3"
+                    zoom={false}
+                  />
+                ) : null}
+                <span class="home-entry__title t-title">{card.title}</span>
+                <span class="mono">{card.dateText}</span>
+                {card.excerpt ? <p class="home-entry__excerpt">{card.excerpt}</p> : null}
+              </a>
+            ))}
+          </div>
+        </section>
+      </div>
+    ) : null
+  }
+</Base>
+
+<style>
+  /* 首页自己的组装家具：只用 var()/fr/关键字，不写裸色值 / 曲线 / 字面尺寸。
+     跨页几何与页码片等全部复用 global.css 的 token 与 .spread / .chapter-head 类。 */
+  .intro {
+    max-width: var(--measure-intro);
+  }
+
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--gap-duo);
+    align-items: start;
+  }
+
+  .home-entry {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .home-entry__title {
+    display: block;
+    margin-top: var(--gap-stack-sm);
+  }
+
+  .home-entry__excerpt {
+    color: var(--ink-soft);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    margin-top: var(--gap-stack-xs);
+  }
+
+  /* 窄屏：卡片网格归一；开场跨页由 global.css 的 .spread 自动退化单列。 */
+  @media (max-width: 900px) {
+    .home-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

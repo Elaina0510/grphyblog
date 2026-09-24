@@ -43,7 +43,24 @@
       "机 · Panasonic Lumix GX85"
     ]
   },
-  "featured": { "photos": [] },
+  "featured": {
+    "photos": [
+      {
+        "collection": "series",
+        "id": "city-lights",
+        "file": "photos/night-01.webp",
+        "title": "夜光 · 城市",
+        "alt": "城市入夜：霓虹在湿路面拖出长光带，远处楼宇只剩灯的轮廓"
+      },
+      {
+        "collection": "series",
+        "id": "city-lights",
+        "file": "photos/night-02.webp",
+        "title": "夜光 · 城市 · 街角",
+        "alt": "街口夜景：路灯与橱窗把转角照出一小片暖光"
+      }
+    ]
+  },
   "$comments": {
     "purpose": "站点级事实数据（visual-system 模块引入）：Base 的书脊导航/页脚、关于页（版权页）的社交与制作信息都从这里取，页面不得再硬编码这些字符串。",
     "sources": "口径来源 = PRODUCT.md（品牌与设备事实）+ doc/designv0.0.1.md §10 + doc/preview/home.html。",

@@ -100,9 +100,22 @@ describe('site.json · 页脚 / 版权页 / 联系与社交', () => {
     expect(Array.isArray(site.indexNote.lines)).toBe(true);
   });
 
-  it('精选区字段留给 home-page 模块，本模块只留空数组', () => {
-    expect(Array.isArray(site.featured.photos)).toBe(true);
-    expect(site.featured.photos).toEqual([]);
+  it('精选区已由 home-page 填充：每项 {collection,id,file,title} 且指向已发布（非 draft）系列', () => {
+    const { photos } = site.featured;
+    expect(Array.isArray(photos)).toBe(true);
+    expect(photos.length).toBeGreaterThan(0);
+    for (const p of photos) {
+      for (const key of ['collection', 'id', 'file', 'title']) {
+        expect(p, `精选项缺 ${key}`).toHaveProperty(key);
+        expect(typeof p[key]).toBe('string');
+        expect(p[key].length).toBeGreaterThan(0);
+      }
+      expect(p.collection).toBe('series');
+      // 公开精选不得引用草稿条目（daily-frames 是 draft:true）
+      expect(p.id).not.toBe('daily-frames');
+      // file 是内容相对展示图（过 imageUrl 出口用）
+      expect(p.file).toMatch(/^photos\/.+\.(webp)$/);
+    }
   });
 });
 

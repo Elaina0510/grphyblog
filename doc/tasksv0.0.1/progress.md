@@ -11,8 +11,8 @@
 | 1 | 项目骨架 | [project-scaffold.md](project-scaffold.md) | — | 1 | [x] |
 | 2 | 内容模型 | [content-model.md](content-model.md) | 1 | 1 | [x] |
 | 3 | 照片导入脚本 | [import-photos.md](import-photos.md) | 2 | 1 | [x] |
-| 4 | 视觉系统 | [visual-system.md](visual-system.md) | 1 | 4 | [ ] |
-| 5 | 首页 | [home-page.md](home-page.md) | 2,4 | 4 | [ ] |
+| 4 | 视觉系统 | [visual-system.md](visual-system.md) | 1 | 4 | [x] |
+| 5 | 首页 | [home-page.md](home-page.md) | 2,4 | 4 | [x] |
 | 6 | 系列页 | [series-pages.md](series-pages.md) | 2,3,4 | 4 | [ ] |
 | 7 | 随笔页 | [posts-pages.md](posts-pages.md) | 2,4 | 4 | [ ] |
 | 8 | 关于页与 404 | [about-404.md](about-404.md) | 4 | 4 | [ ] |
@@ -40,6 +40,7 @@
 - ⚠️ 模块 11 任务 6：Decap"全局禁止上传"以版本实际能力为准，兜底加构建期检查——实施时若发现配置不可达，先回来更新本清单再动手。
 - ⚠️ HEIC 输入不进 v1（sharp 默认二进制不支持，import-photos 任务 1 已注明）；如需再评估编译依赖。
 - ✅ 已拍板（2026-09-24 编排）：照片落位约定统一到 content-model 已实现并已测的口径——展示图 `src/content/<集合>/<条目>/photos/<base>.webp`、缩略图同目录 `photos/<base>.thumb.webp`（非 import-photos.md 任务7 字面的 `images/`+`thumbnails/` 双目录）。原因：避免返工已验证的 contentImages/sidecar/种子内容，保持照片通道单一口径；此偏离可逆，若用户坚持双目录命名再统一回改。
+- ✅ 已拍板（2026-09-24 编排）：home-page 任务5 与 series-pages 任务2 对「系列张数共享工具函数」存在依赖倒挂（首页要用、定义却在系列页模块）。改由 home-page 先落地为 `src/utils/photoCount.ts`（纯函数、I/O 注入、sidecar 优先→缺 sidecar 兜底计数并构建期告警），series-pages 模块直接复用、不得重复实现。
 
 ## 勾选规则
 
