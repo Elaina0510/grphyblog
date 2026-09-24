@@ -36,17 +36,32 @@ export interface Exif {
 }
 
 /**
- * 单张照片条目：展示版 + 缩略图 + EXIF。
+ * 单张照片条目：展示版 + 缩略图 + 各自真实像素尺寸 + EXIF。
  * `file` / `thumb` 存「相对该内容条目资源夹」的路径（契约 (a)）：
  *   photos/<basename>.webp / photos/<basename>.thumb.webp
  * 展示版长边 = DISPLAY_LONG_EDGE(2560)、缩略图长边 = THUMB_LONG_EDGE(800)，
  * 具体数值由 astro.config.mjs 单一出处提供，此处只记录相对路径。
+ *
+ * `width` / `height` 是**展示版**的真实像素宽高，`thumbWidth` / `thumbHeight` 是**缩略图**的。
+ * 四者由导入脚本从 sharp 的输出 metadata 回填（即「写盘后真实尺寸」，不是按常量推算的期望值），
+ * 因此原图小于目标长边（不放大）或被旋转纠正时也与磁盘上的产物完全一致。
+ * 存在的意义：design §3.7 要求全站 `<img>` 显式声明宽高以防布局抖动，
+ * 页面 / 图版 / 灯箱组件直接从 sidecar 取这四个数，不必在构建期再探一次图片尺寸。
+ * 这四个字段是**必填**：由脚本生成的 sidecar 一定带齐（缺字段的旧文件应重跑脚本回填）。
  */
 export interface PhotoEntry {
   /** 展示版相对路径，如 "photos/night-01.webp" */
   file: string;
   /** 缩略图相对路径，如 "photos/night-01.thumb.webp" */
   thumb: string;
+  /** 展示版真实像素宽 */
+  width: number;
+  /** 展示版真实像素高 */
+  height: number;
+  /** 缩略图真实像素宽 */
+  thumbWidth: number;
+  /** 缩略图真实像素高 */
+  thumbHeight: number;
   /** 该照片的 EXIF；允许缺失 */
   exif: Exif;
 }

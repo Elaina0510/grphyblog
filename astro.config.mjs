@@ -20,10 +20,14 @@ export const THUMB_LONG_EDGE = 800;
 
 /**
  * 编码质量。design §4 给的是体积预算（展示版 ≤800KB、缩略图 ≤80KB，见 §6 性能预算），
- * 未拍板具体 quality 数值，故此处为可调起点；import-photos 模块会按真实照片复核。
+ * 未拍板具体 quality 数值，故此处为可调起点；import-photos 模块已按 raw/ 的 5 张真图复核：
+ *   - DISPLAY_QUALITY = 82：实测 343~683KB，全部落在 §6 硬预算 800KB 内，故保持不动（展示图优先清晰度）。
+ *   - THUMB_QUALITY = 64（起点 76 下调）：76 时实测 44.7~77.8KB，虽未破 80KB 却已吃掉 97% 余量，
+ *     且明显高出 §4「约 30~60KB」目标带；64 时实测 34.8~64.7KB，既贴近目标带又给后续高细节照片留足余量。
+ *     缩略图只在网格里以小尺寸出现，降档肉眼损失可忽略；要改清晰度仍只改这一处。
  */
 export const DISPLAY_QUALITY = 82;
-export const THUMB_QUALITY = 76;
+export const THUMB_QUALITY = 64;
 
 /** 供脚本与工具函数一次性 import 的规格对象。 */
 export const IMAGE_SPECS = Object.freeze({

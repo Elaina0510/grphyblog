@@ -9,8 +9,8 @@
 | # | 模块 | 任务文件 | 依赖 | 对应里程碑 | 状态 |
 |---|---|---|---|---|---|
 | 1 | 项目骨架 | [project-scaffold.md](project-scaffold.md) | — | 1 | [x] |
-| 2 | 内容模型 | [content-model.md](content-model.md) | 1 | 1 | [ ] |
-| 3 | 照片导入脚本 | [import-photos.md](import-photos.md) | 2 | 1 | [ ] |
+| 2 | 内容模型 | [content-model.md](content-model.md) | 1 | 1 | [x] |
+| 3 | 照片导入脚本 | [import-photos.md](import-photos.md) | 2 | 1 | [x] |
 | 4 | 视觉系统 | [visual-system.md](visual-system.md) | 1 | 4 | [ ] |
 | 5 | 首页 | [home-page.md](home-page.md) | 2,4 | 4 | [ ] |
 | 6 | 系列页 | [series-pages.md](series-pages.md) | 2,3,4 | 4 | [ ] |
@@ -25,7 +25,7 @@
 
 ## 里程碑映射
 
-- [ ] 里程碑 1 骨架+导入跑通 = 模块 1,2,3
+- [x] 里程碑 1 骨架+导入跑通 = 模块 1,2,3
 - [ ] 里程碑 2 首次上线 = 模块 10（前 8 模块可构建为前置）
 - [ ] 里程碑 3 后台文字闭环 = 模块 11
 - [ ] 里程碑 4 视觉+灯箱（首页视觉稿已完成，剩实施与打磨）= 模块 4,5,6,7,8,9
@@ -39,6 +39,7 @@
 - `raw/` 实测 5 张 jpg，与 import-photos 验证任务一致；`thumbs/` 已存在。种子内容改用手工压缩占位图（content-model 任务 7），正式产物由脚本回填。
 - ⚠️ 模块 11 任务 6：Decap"全局禁止上传"以版本实际能力为准，兜底加构建期检查——实施时若发现配置不可达，先回来更新本清单再动手。
 - ⚠️ HEIC 输入不进 v1（sharp 默认二进制不支持，import-photos 任务 1 已注明）；如需再评估编译依赖。
+- ✅ 已拍板（2026-09-24 编排）：照片落位约定统一到 content-model 已实现并已测的口径——展示图 `src/content/<集合>/<条目>/photos/<base>.webp`、缩略图同目录 `photos/<base>.thumb.webp`（非 import-photos.md 任务7 字面的 `images/`+`thumbnails/` 双目录）。原因：避免返工已验证的 contentImages/sidecar/种子内容，保持照片通道单一口径；此偏离可逆，若用户坚持双目录命名再统一回改。
 
 ## 勾选规则
 

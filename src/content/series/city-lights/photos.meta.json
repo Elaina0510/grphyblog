@@ -2,6 +2,10 @@
   {
     "file": "photos/night-01.webp",
     "thumb": "photos/night-01.thumb.webp",
+    "width": 2560,
+    "height": 1707,
+    "thumbWidth": 800,
+    "thumbHeight": 533,
     "exif": {
       "camera": "FUJIFILM X-T5",
       "lens": "XF 56mm F1.2 R WR",
@@ -15,9 +19,17 @@
   {
     "file": "photos/night-02.webp",
     "thumb": "photos/night-02.thumb.webp",
+    "width": 2560,
+    "height": 1707,
+    "thumbWidth": 800,
+    "thumbHeight": 533,
     "exif": {
       "camera": null,
-      "aperture": 2.0,
+      "lens": null,
+      "focalLength": null,
+      "aperture": 2,
+      "shutter": null,
+      "iso": null,
       "dateTaken": "2026-09-20"
     }
   }

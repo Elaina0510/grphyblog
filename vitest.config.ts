@@ -14,7 +14,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
       reportsDirectory: './coverage',
-      include: ['astro.config.mjs', 'src/**/*.ts'],
+      include: ['astro.config.mjs', 'src/**/*.ts', 'scripts/**/*.mjs'],
       // 纯类型声明文件无可执行语句，排除掉免得把覆盖率数字拉成噪音
       exclude: ['**/*.d.ts', '.astro/**'],
       all: false,
