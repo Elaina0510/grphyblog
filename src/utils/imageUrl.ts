@@ -16,6 +16,13 @@
 /** 绝对 URL：以 http:// 或 https:// 开头（大小写不敏感）。 */
 const ABSOLUTE_URL = /^https?:\/\//i;
 
+/**
+ * 已内联/已解析的协议串：`data:` / `blob:` 本身就是完整可加载 URL，不能再被 base 前缀污染。
+ * Vite 会把小于 `build.assetsInlineLimit` 的资源经 `?url` 内联成 `data:` URI，若在此误加同源 base
+ * 会产出 `/data:image/...` 这类加载不了的串，故与绝对 URL 同列原样返回。
+ */
+const INLINE_URL = /^(data|blob):/i;
+
 export interface ImageUrlOptions {
   /**
    * 前缀 base。省略时回落到 `import.meta.env.PUBLIC_IMAGE_BASE`，
@@ -73,6 +80,9 @@ export function imageUrl(path: string, opts: ImageUrlOptions = {}): string {
     return path as string;
   }
   if (ABSOLUTE_URL.test(path)) {
+    return path;
+  }
+  if (INLINE_URL.test(path)) {
     return path;
   }
   const base = opts.base ?? readEnvBase() ?? '/';

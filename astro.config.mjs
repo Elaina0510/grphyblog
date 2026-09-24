@@ -75,6 +75,12 @@ export default {
     responsiveStyles: true,
   },
   vite: {
+    // 强制所有资源（含小缩略图）经 ?url 产出 /_astro/ 真文件 URL，而非内联成 data: URI：
+    // 否则 <4KB 的种子缩略图会变 base64 塞进灯箱 frames JSON 岛撑爆 HTML，且 imageUrl 的 base
+    // 拼接对 data: 不友好。关掉内联后全站图片恒为文件 URL，单一出口口径更干净（§3 边界③/§6 预算）。
+    build: {
+      assetsInlineLimit: 0,
+    },
     // 把图片规格注入构建环境，组件里可用 import.meta.env.PUBLIC_IMAGE_* 读取同一份数值
     define: {
       'import.meta.env.PUBLIC_IMAGE_FORMAT': JSON.stringify(IMAGE_FORMAT),

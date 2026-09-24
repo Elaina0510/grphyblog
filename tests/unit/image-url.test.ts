@@ -62,3 +62,16 @@ describe('imageUrl · 绝对 URL 原样返回', () => {
     expect(imageUrl('HTTPS://MixedCase.com/a.webp')).toBe('HTTPS://MixedCase.com/a.webp');
   });
 });
+
+describe('imageUrl · 内联 data:/blob: 原样返回（回归 /data: 缺陷）', () => {
+  it('data: URI 不加 base（否则变不可加载的 /data:）', () => {
+    const data = 'data:image/webp;base64,UklGRi...';
+    expect(imageUrl(data)).toBe(data);
+    expect(imageUrl(data, { base: 'https://cdn.example/' })).toBe(data);
+  });
+  it('blob: URI 不加 base', () => {
+    const blob = 'blob:https://example/1-2-3';
+    expect(imageUrl(blob)).toBe(blob);
+    expect(imageUrl(blob, { base: '/' })).toBe(blob);
+  });
+});
