@@ -1,0 +1,184 @@
+---
+/* ============================================================================
+ * posts/index.astro —— 随笔列表（posts-pages 任务 1）：行式目次 · 时间倒序
+ *
+ * 结构（DESIGN §5 / §10 目次 + design §5「随笔列表 = 时间倒序，文字为主、插图为辅」）：
+ *   章节题行（ESSAYS · 随笔 · 已收录 N 篇）→ .toc 点线目录行（与系列列表同一套目次家具）；
+ *   每行 = 篇号 No.xx + 题名 + 点线 + 「日期 · 插图 N 帧」元数据，
+ *          第二行 = 从正文抽出的一行摘要（纯文字，不设封面缩略 —— 文字为主的口径）。
+ *
+ * 硬约束（勿偏离）：
+ *   - 复用 Base.astro（书脊/导航/页脚/入场编排），current="posts"；
+ *   - 排 draft 一律走 getPublishedPosts()（不各自 filter）；排序 = 日期倒序，同日期按资源夹名，
+ *     与 getStaticPaths 的路由口径一致（同一个 slug 计算）；
+ *   - 帧数唯一口径 = resolveSeriesCount（复用 photoCount，sidecar 优先、缺则兜底并告警）；
+ *   - 图片 URL 只经 contentImageUrl / entryResourceDir（边界③）；列表本身不放缩略图；
+ *   - v1 无标签页 / 无搜索 / 无编号分页（§5 暂不做）；朱砂仅盖章级 ≤5%（.no 复用 global）；
+ *   - 样式值走 var(--token)；页面 <style> 无裸色值 / 曲线 / 字面 px 尺寸。
+ * ==========================================================================*/
+import Base from '../../layouts/Base.astro';
+import { getPublishedPosts } from '../../utils/collections';
+import { contentImageMap, entryResourceDir } from '../../utils/contentImages';
+import { resolveSeriesCount } from '../../utils/photoCount';
+import type { PhotoSidecar } from '../../types/photoSidecar';
+
+/* ---- sidecar：目录 -> photos.meta.json 数组（与首页 / 系列列表同法，构建期解析）---- */
+const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, PhotoSidecar>;
+
+const sidecarByDir: Record<string, PhotoSidecar> = {};
+for (const [key, mod] of Object.entries(sidecarModules)) {
+  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
+  sidecarByDir[dir] = mod;
+}
+
+/** 某条目 photos/ 下的图片路径列表（含缩略图；兜底计数内部会排除 .thumb.webp）。 */
+function photosUnder(dir: string): string[] {
+  const prefix = `${dir}/photos/`;
+  return Object.keys(contentImageMap).filter((k) => k.startsWith(prefix));
+}
+
+function warnMissingSidecar(message: string): void {
+  console.warn(message);
+}
+
+/** 日期口径：UTC 取日期部分，印刷口径 YYYY.MM.DD（与首页 / 系列页同）。 */
+function fmtDate(value: Date | string): string {
+  const iso =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? ''
+        : value.toISOString().slice(0, 10)
+      : String(value).trim();
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(iso);
+  if (!m) return iso;
+  const [, y, mo, d] = m;
+  return `${y}.${mo.padStart(2, '0')}.${d.padStart(2, '0')}`;
+}
+
+/** 资源夹名（= 详情路由 slug）：`2026-09-21-morning-fog.md` → `2026-09-21-morning-fog`。 */
+function slugOf(id: string): string {
+  const dir = entryResourceDir('posts', id);
+  return dir.split('/').pop() ?? id;
+}
+
+/** 从 Markdown 正文抽一行纯文本摘要（与首页 excerpt() 同口径：去标记 / 折叠空白 / 截断）。 */
+function excerpt(body: string, max = 96): string {
+  const text = String(body ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_`~]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/* ---- 查询（排 draft）+ 时间倒序：日期新→旧，同日期按资源夹名兜个定序（构建可复现）---- */
+const published = await getPublishedPosts();
+const ordered = [...published].sort((a, b) => {
+  const byDate = b.data.date.getTime() - a.data.date.getTime();
+  return byDate !== 0 ? byDate : slugOf(a.id).localeCompare(slugOf(b.id));
+});
+
+/* ---- 逐行数据：篇号 / 题名 / 日期 / 插图帧数 / 摘要 ---- */
+interface TocRow {
+  href: string;
+  no: string;
+  title: string;
+  dateText: string;
+  count: number;
+  excerpt: string;
+}
+
+const rows: TocRow[] = ordered.map((entry, i) => {
+  const dir = entryResourceDir('posts', entry.id);
+  const slug = slugOf(entry.id);
+  const count = resolveSeriesCount({
+    sidecar: sidecarByDir[dir] ?? null,
+    files: photosUnder(dir),
+    entryId: slug,
+    onWarn: warnMissingSidecar,
+  });
+  return {
+    href: `/posts/${slug}/`,
+    no: `No.${String(i + 1).padStart(2, '0')}`,
+    title: entry.data.title,
+    dateText: fmtDate(entry.data.date),
+    count,
+    excerpt: excerpt(entry.body),
+  };
+});
+---
+
+<Base
+  current="posts"
+  title="随笔 · 目次 —— 柚 · Justyou"
+  description="不定期增补的拍摄随笔：按日期倒序的目次，文字为主、插图为辅。"
+  bodyClass="posts-index-page"
+>
+  <div class="wrap">
+    <section class="posts-index" aria-label="随笔目次">
+      <div class="chapter-head rise">
+        <span class="chapter-no">ESSAYS</span>
+        <h1 class="t-headline">随笔</h1>
+        <span class="chapter-sub">{`已收录 ${rows.length} 篇 · 时间倒序`}</span>
+      </div>
+
+      {
+        rows.length > 0 ? (
+          <ol class="toc rise">
+            {rows.map((row) => (
+              <li>
+                <a class="toc-row" href={row.href}>
+                  <span class="no">{row.no}</span>
+                  <span class="name">{row.title}</span>
+                  <span class="dots" aria-hidden="true" />
+                  <span class="meta">{`${row.dateText} · 插图 ${row.count} 帧`}</span>
+                  {row.excerpt ? <span class="toc-excerpt">{row.excerpt}</span> : null}
+                </a>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p class="t-body posts-index__empty">
+            暂空 —— 用 <code>npm run import -- --post &lt;日期-标题&gt;</code> 入库插图、
+            在 <code>src/content/posts/</code> 丢一个 md 即成篇。
+          </p>
+        )
+      }
+    </section>
+  </div>
+</Base>
+
+<style>
+  /* 目次行含摘要第二行：整行从「单行基线」放宽为可换行，摘要独占第二行。
+     只允许 var()/em/关键字，不写裸色值 / 字号 / 字面 px。 */
+  .posts-index .toc .toc-row {
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .toc-excerpt {
+    flex-basis: 100%;
+    font-family: var(--font-sans);
+    color: var(--ink-soft);
+    max-width: var(--measure);
+    /* 摘要与上一行的间距用堆叠 token（与正文段距同一节奏） */
+    margin-top: var(--gap-stack-xs);
+  }
+
+  .posts-index__empty {
+    color: var(--ink-soft);
+  }
+
+  /* 窄屏 375：题名不 nowrap 撑破横向；点线仍可伸展，元数据换到题名同一行右侧。 */
+  @media (max-width: 900px) {
+    .posts-index .toc .name {
+      white-space: normal;
+    }
+  }
+</style>

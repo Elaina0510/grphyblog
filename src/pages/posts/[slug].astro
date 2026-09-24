@@ -1,0 +1,363 @@
+---
+/* ============================================================================
+ * posts/[slug].astro —— 随笔详情（posts-pages 任务 2/3/4）
+ *
+ * 结构（DESIGN §5「随笔 = 正文 · 页边批注」+ design §5「时间倒序；文字为主、插图为辅」）：
+ *   ① 章节题行（等宽 ESSAY · 册号朱砂 + 宋体题名 + 等宽日期元数据）
+ *   ② .essay 对置：左 = 正文（散文流），右 = .marginalia 页边批注（日期 / 标签 / 插图帧数 / 资源夹）
+ *   ③ 正文内联插图：与文字**同流交替**的 PhotoPlate 图版（不是另起照片流），
+ *      每张挂灯箱接线 + 归属 post-<slug> 的 frames JSON 岛
+ *
+ * 正文内联插图管线（任务 4，实现方式 (b)：render 得 HTML 后做字符串后处理）：
+ *   entry.rendered.html → processPostIllustrations() 切成 parts（文本段 / 插图交替）
+ *   → 文本段用 set:html 落进 .post-body；插图用 **PhotoPlate 组件**落进同一条流里，
+ *     于是同时拿到：已解析 URL（contentImageUrl 单一出口）+ sidecar 真宽高 + 灯箱 data-* + ExifCard。
+ *   为什么不用 rehype 插件（方式 a）：插件产出 HTML 字符串，接不到组件（拿不到 scoped 样式与
+ *   PageChip/ExifCard 复用），且 Astro 7 的 markdown 管线会把正文本地图改写成
+ *   `<img __ASTRO_IMAGE_="{…}">` 占位（真 src 只在 <Content/> 里异步回填），相对路径映射
+ *   sidecar 的活儿在字符串阶段做才成立。详见 src/utils/postIllustrations.ts 头注。
+ *
+ * 灯箱数据契约（§2，与 series 侧同口径）：
+ *   <script type="application/json" class="lightbox-frames" data-gallery="post-<slug>">
+ *     {"frames":[{src,thumb,width,height,alt,title,exif}, ...]}</script>
+ *   frames 只含正文真实引用的插图，每张一帧（正文重复引用同一张不重复占帧）；
+ *   每张图版根 <figure> 带 data-lightbox / data-lightbox-gallery="post-<slug>" / data-lightbox-index。
+ *
+ * 硬约束（勿偏离）：
+ *   - getStaticPaths 只遍历 getPublishedPosts() → **draft 随笔根本不生成路由 → 天然 404**；
+ *     slug = entryResourceDir('posts', id) 末段（= `<日期-标题>.md` 去扩展名）；
+ *   - 图片 URL 只经 contentImageUrl / entryResourceDir（边界③）；宽高只从 sidecar 取，缺则不伪造；
+ *   - 正文插图全部 loading="lazy"（§6 全懒加载；本页 LCP 是标题文字，不需 eager 例外）；
+ *   - 插图 >30 张时按 planPhotoFlow 分批 IO 追加（§6），frames 岛始终含全部帧；
+ *   - 复用 Base / PhotoPlate / ExifCard，导航品牌页脚不硬编码；
+ *   - 样式只走 var(--token)：正文 Prose 用 .t-body + :global() 选择器（set:html 内容拿不到
+ *     scoped 类名），页面 <style> 无裸色值 / 曲线 / 字面 px。
+ * ==========================================================================*/
+import Base from '../../layouts/Base.astro';
+import PhotoPlate from '../../components/PhotoPlate.astro';
+import ExifCard from '../../components/ExifCard.astro';
+import type { CollectionEntry } from 'astro:content';
+import { getPublishedPosts } from '../../utils/collections';
+import { contentImageUrl, entryResourceDir, resolveContentImage } from '../../utils/contentImages';
+import {
+  buildIllustrationFramesJson,
+  processPostIllustrations,
+  type IllustrationRef,
+} from '../../utils/postIllustrations';
+import { planPhotoFlow } from '../../utils/paginateFlow';
+import { hasNoteContent } from '../../utils/noteBody';
+import type { PhotoSidecar } from '../../types/photoSidecar';
+
+/* ---- sidecar：目录 -> photos.meta.json 数组（与列表页 / 首页同法）---- */
+const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, PhotoSidecar>;
+
+const sidecarByDir: Record<string, PhotoSidecar> = {};
+for (const [key, mod] of Object.entries(sidecarModules)) {
+  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
+  sidecarByDir[dir] = mod;
+}
+
+function warnMissingSidecar(message: string): void {
+  console.warn(message);
+}
+
+function fmtDate(value: Date | string): string {
+  const iso =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? ''
+        : value.toISOString().slice(0, 10)
+      : String(value).trim();
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(iso);
+  if (!m) return iso;
+  const [, y, mo, d] = m;
+  return `${y}.${mo.padStart(2, '0')}.${d.padStart(2, '0')}`;
+}
+
+/**
+ * getStaticPaths：只遍历**已发布**随笔（getPublishedPosts 已排 draft）。
+ * draft 随笔不在这里 → 其路由根本不生成 → 访问即命中 404（天然，不靠运行时判断）。
+ * slug 取自 `<日期-标题>.md` 文件名去扩展（entryResourceDir 末段）。
+ * 注意：Astro 把导出的 getStaticPaths 提到组件顶层作用域之前，其内部**不得**引用下方局部函数。
+ */
+export async function getStaticPaths() {
+  const published = await getPublishedPosts();
+  return published.map((entry) => {
+    const dir = entryResourceDir('posts', entry.id);
+    const slug = dir.split('/').pop() ?? entry.id;
+    const rendered = (entry as unknown as { rendered?: { html?: string } }).rendered;
+    return {
+      params: { slug },
+      // ⚠️ rendered 必须单独作为 prop 传出：Astro 会 dehydrate getStaticPaths 的 props，
+      //    entry 上的 rendered / filePath 在那一步就被剥掉了（只剩 collection/id/data/body）。
+      props: { entry, renderedHtml: String(rendered?.html ?? '') },
+    };
+  });
+}
+
+const { entry, renderedHtml = '' } = Astro.props as {
+  entry: CollectionEntry<'posts'>;
+  renderedHtml?: string;
+};
+
+const dir = entryResourceDir('posts', entry.id);
+const slug = dir.split('/').pop() ?? entry.id;
+const gallery = `post-${slug}`;
+const sidecar: PhotoSidecar = sidecarByDir[dir] ?? [];
+const title = entry.data.title;
+
+/* ---- 正文：Astro 构建期渲染好的 HTML 串（本地图片此时仍是 __ASTRO_IMAGE_ 占位）
+       由 getStaticPaths 显式取 entry.rendered.html 并以字符串 prop 传进来。---- */
+
+/**
+ * 相对路径 -> 展示图可服务 URL（边界③唯一出口）。
+ * 管线契约：产物不在构建图里就返回空串（contentImageUrl 本身会退回相对路径，故先问表）。
+ */
+const resolveUrl = (rel: string): string =>
+  resolveContentImage(dir, rel) === undefined ? '' : contentImageUrl(dir, rel);
+
+const body = processPostIllustrations({
+  html: renderedHtml,
+  sidecar,
+  resolveUrl,
+  onWarn: warnMissingSidecar,
+});
+
+/** 图版所需的 alt：正文没写就按题名 + 帧号兜底，不留空描述。 */
+function plateAlt(ref: IllustrationRef): string {
+  const own = String(ref.alt ?? '').trim();
+  return own || `${title} · 第 ${ref.frameIndex + 1} 帧插图`;
+}
+
+const plates: IllustrationRef[] = body.frames;
+const total = plates.length;
+
+/* ---- 灯箱 frames 岛（§2）：始终含全部帧， '<' 已转义防 </script> 提前闭合 ---- */
+const lightboxJson = buildIllustrationFramesJson(plates, { title });
+
+/* ---- 分批计划（§6）：正文插图 >30 张才分批 IO 追加 ---- */
+const plan = planPhotoFlow(total);
+
+const tags: string[] = Array.isArray(entry.data.tags) ? entry.data.tags : [];
+const dateText = fmtDate(entry.data.date);
+/** 有可见文字（剥注释/图片语法后）或至少一张插图图版，正文区才出现。 */
+const hasBody = hasNoteContent(entry.body) || body.plateCount > 0;
+---
+
+<Base
+  current="posts"
+  title={`${title} —— 柚 · Justyou`}
+  description={`${title}：${dateText} 的拍摄随笔，共 ${total} 帧插图。`}
+  bodyClass="post-detail-page"
+>
+  <!-- ① 章节题行：等宽册号（朱砂）+ 宋体题名 + 等宽元数据 -->
+  <div class="wrap">
+    <section class="post-detail" aria-label={title}>
+      <div class="chapter-head rise">
+        <span class="chapter-no">ESSAY · {slug}</span>
+        <h1 class="t-headline post-title">{title}</h1>
+        <span class="chapter-sub">{`${dateText} · 插图 ${total} 帧`}</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- ② 正文（左）· 页边批注（右）：.essay 已由 global 供 --essay-cols 与窄屏归一 -->
+  <div class="wrap">
+    <section class="post-essay" aria-label="随笔正文">
+      <div class="essay rise">
+        <article
+          class="post-body t-body"
+          data-flow-batched={plan.batched ? 'true' : 'false'}
+          data-flow-initial={plan.firstScreen}
+          data-flow-chunk={plan.chunkSize}
+        >
+          {
+            hasBody ? (
+              body.parts.map((part) =>
+                part.kind === 'html' ? (
+                  <div class="prose-chunk" set:html={part.html} />
+                ) : (
+                  <PhotoPlate
+                    class="post-plate"
+                    src={part.ref.src}
+                    width={part.ref.photo.width}
+                    height={part.ref.photo.height}
+                    alt={plateAlt(part.ref)}
+                    loading="lazy"
+                    current={part.ref.frameIndex + 1}
+                    total={total}
+                    dataFrame={part.ref.frameIndex}
+                    lightbox
+                    lightboxGallery={gallery}
+                    lightboxIndex={part.ref.frameIndex}
+                  >
+                    <ExifCard title={title} exif={part.ref.photo.exif} />
+                  </PhotoPlate>
+                ),
+              )
+            ) : (
+              <p class="post-empty">正文尚未落笔 —— 写完这个 md 再发布。</p>
+            )
+          }
+
+          {
+            /* 灯箱帧序列岛：只在真有引用插图时输出（无图 = 无图库 = 无岛，与 series 空册同口径）。 */
+            total > 0 ? (
+              <script
+                type="application/json"
+                class="lightbox-frames"
+                data-gallery={gallery}
+                set:html={lightboxJson}
+              />
+            ) : null
+          }
+        </article>
+
+        <aside class="marginalia post-meta" aria-label="篇信息">
+          <p>
+            <span class="mark">※</span>
+            {title}
+          </p>
+          <p>{`摄于 ${dateText}`}</p>
+          {tags.length > 0 ? <p>{`标签 · ${tags.join(' / ')}`}</p> : null}
+          <p>{`插图 ${total} 帧 · 出自 ${slug}/photos`}</p>
+          <p>
+            <a href="/posts/">← 回随笔目次</a>
+          </p>
+        </aside>
+      </div>
+    </section>
+  </div>
+</Base>
+
+{
+  /* >30 帧：IntersectionObserver 追加渲染（§6）。Astro 会把组件里的 <script> 一律提到页头，
+     故不按 plan.batched 条件包裹，而是**始终发出**、由运行时 data-flow-batched 决定是否动作：
+     仅当分批、非 reduced-motion、且 IO 可用时，脚本才临时隐藏 firstScreen 之后的图版并逐批现出；
+     无 JS / 未分批时该分支不进入，正文与插图全部直出。 */
+  <script>
+    const flow = document.querySelector<HTMLElement>('.post-body');
+    if (flow && flow.dataset.flowBatched === 'true') {
+      const reduce =
+        typeof matchMedia === 'function' &&
+        matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!reduce && typeof IntersectionObserver !== 'undefined') {
+        const initial = Number(flow.dataset.flowInitial) || 0;
+        const chunk = Number(flow.dataset.flowChunk) || 20;
+        const plates = Array.from(
+          flow.querySelectorAll<HTMLElement>('.post-plate'),
+        );
+        plates.forEach((el, i) => {
+          if (i >= initial) el.setAttribute('data-flow-hidden', '');
+        });
+        let shown = initial;
+        const sentinel = document.createElement('div');
+        sentinel.setAttribute('aria-hidden', 'true');
+        flow.appendChild(sentinel);
+        const reveal = () => {
+          for (let k = 0; k < chunk && shown < plates.length; k += 1, shown += 1) {
+            plates[shown].removeAttribute('data-flow-hidden');
+          }
+          if (shown >= plates.length) io.disconnect();
+        };
+        const io = new IntersectionObserver(
+          (entries) => entries.some((e) => e.isIntersecting) && reveal(),
+          { rootMargin: '200px' },
+        );
+        io.observe(sentinel);
+        reveal();
+      }
+    }
+  </script>
+}
+
+<style>
+  /* ---- Prose（任务 3）：思源黑体 16.5/1.9 走 .t-body + --measure 行长；
+         set:html 落的正文拿不到 scoped 类名，故一律用「父级 cid + :global() 子代」选择器。 ---- */
+  .post-body {
+    max-width: var(--measure);
+  }
+
+  /* 段 / 列表 / 引用 / 代码块的下边距即 zine 节奏；跨 prose-chunk 相邻不依赖 p + p 选择器。 */
+  .post-body :global(p),
+  .post-body :global(ul),
+  .post-body :global(ol),
+  .post-body :global(blockquote),
+  .post-body :global(pre) {
+    margin-bottom: var(--para-gap);
+  }
+
+  .post-body :global(li + li) {
+    margin-top: var(--gap-stack-xs);
+  }
+
+  .post-body :global(h2),
+  .post-body :global(h3) {
+    font-family: var(--font-serif);
+    font-weight: var(--weight-entry);
+    letter-spacing: var(--tracking-head);
+    line-height: var(--leading-tight);
+    margin-bottom: var(--gap-stack-sm);
+  }
+
+  .post-body :global(h2) {
+    font-size: var(--text-subtitle);
+  }
+
+  .post-body :global(h3) {
+    font-size: var(--text-title);
+  }
+
+  .post-body :global(em) {
+    font-style: normal;
+    font-weight: var(--weight-em);
+  }
+
+  .post-body :global(code) {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-md);
+  }
+
+  .post-body :global(a) {
+    text-decoration-thickness: var(--rule-w);
+  }
+
+  /* 切分用的容器不产生盒子：让正文与插图在同一列里连续排列。 */
+  .prose-chunk {
+    display: contents;
+  }
+
+  /* 插图：满栏自然比例（显式宽高已撑起盒子），与正文的间距靠图版自身的外边距。 */
+  .post-body :global(.post-plate) {
+    margin-bottom: var(--gap-stack-lg);
+  }
+
+  /* JS 现出态：仅当分批时脚本才加这个属性；无 JS 时不存在，内容直出。 */
+  .post-body :global(.post-plate[data-flow-hidden]) {
+    display: none;
+  }
+
+  .post-empty {
+    color: var(--ink-soft);
+  }
+
+  /* 页边批注里的返回链：等宽声部（.marginalia 已由 global 供顶线朱砂与 --font-mono）。 */
+  .post-meta a {
+    text-decoration-thickness: var(--rule-w);
+  }
+
+  .post-meta p {
+    margin: 0;
+  }
+
+  /* 窄屏 375：.essay 由 global 归一单列；图版满栏、正文行长仍受 --measure 约束。 */
+  @media (max-width: 900px) {
+    .post-title {
+      /* 长题名在窄屏可换行，不撑破横向 */
+      overflow-wrap: anywhere;
+    }
+  }
+</style>
