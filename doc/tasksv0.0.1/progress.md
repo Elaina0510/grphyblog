@@ -13,7 +13,7 @@
 | 3 | 照片导入脚本 | [import-photos.md](import-photos.md) | 2 | 1 | [x] |
 | 4 | 视觉系统 | [visual-system.md](visual-system.md) | 1 | 4 | [x] |
 | 5 | 首页 | [home-page.md](home-page.md) | 2,4 | 4 | [x] |
-| 6 | 系列页 | [series-pages.md](series-pages.md) | 2,3,4 | 4 | [ ] |
+| 6 | 系列页 | [series-pages.md](series-pages.md) | 2,3,4 | 4 | [x] |
 | 7 | 随笔页 | [posts-pages.md](posts-pages.md) | 2,4 | 4 | [ ] |
 | 8 | 关于页与 404 | [about-404.md](about-404.md) | 4 | 4 | [ ] |
 | 9 | 灯箱 | [lightbox.md](lightbox.md) | 2,4,6 | 4/5 | [ ] |

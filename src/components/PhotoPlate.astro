@@ -57,6 +57,15 @@ interface Props {
   shadow?: boolean;
   /** 灯箱帧序号（lightbox 模块按 data-frame 取帧，与 home.html 视觉稿同口径） */
   dataFrame?: number | string;
+  /**
+   * 灯箱接线（series/posts/lightbox 共用同一套 prop 名）：为 true 时在根 <figure> 上输出
+   * `data-lightbox`（空属性，标记「此图版可点开灯箱」）。交互本体在 lightbox 模块，本组件只接线。
+   */
+  lightbox?: boolean;
+  /** 灯箱图库 id：输出 `data-lightbox-gallery`（系列页固定为 `series-<slug>`）。 */
+  lightboxGallery?: string;
+  /** 灯箱帧索引：输出 `data-lightbox-index`（= 该图在 frames 岛中的下标）。 */
+  lightboxIndex?: number | string;
   /** 图版下方的题注/说明（slot）：ExifCard、闲章等覆盖件 */
   class?: string;
   id?: string;
@@ -77,6 +86,9 @@ const {
   zoom = true,
   shadow = true,
   dataFrame,
+  lightbox,
+  lightboxGallery,
+  lightboxIndex,
   class: extraClass,
   id,
 } = Astro.props;
@@ -85,6 +97,9 @@ const {
 <figure
   id={id}
   data-frame={dataFrame}
+  data-lightbox={lightbox ? 'true' : undefined}
+  data-lightbox-gallery={lightboxGallery}
+  data-lightbox-index={lightboxIndex}
   class:list={[
     'plate',
     fit === 'cover' && 'plate--cover',
