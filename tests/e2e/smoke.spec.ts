@@ -18,3 +18,11 @@ test('未定义路由返回 404（静态站未开 SSR）', async ({ request }) =
   const res = await request.get('/this-route-does-not-exist-yet/');
   expect(res.status()).toBe(404);
 });
+
+// 真浏览器链路冒烟：Chromium 已由 `npm run test:e2e:install` 下载就绪。
+// 后续 lightbox 模块的交互用例（开灯箱 / ←→ 切帧 / Esc / EXIF 拍摄单）挂在这条链路下扩展。
+test('Chromium 可加载并渲染骨架首页', async ({ page }) => {
+  await page.goto('/');
+  await expect(page).toHaveTitle('柚 · Justyou');
+  await expect(page.locator('h1')).toHaveText('骨架占位首页');
+});
