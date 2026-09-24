@@ -5,14 +5,14 @@
 
 ## 最小任务清单
 
-- [ ] 1. 产出 `doc/account-setup.md`：GitHub 建仓（**public**）+ Cloudflare Pages 连接步骤（用户网页点击可完成的粒度，含免费档说明）
-- [ ] 2. 推送主分支到 GitHub；确认 `.gitignore` 生效（raw/、thumbs/ 不在远端）
-- [ ] 3. Cloudflare Pages 配置：构建命令 `npm run build`、输出目录 `dist`、Node 版本与 `engines` 一致（环境变量形式）
-- [ ] 4. 首次构建排错：云端构建通过，`*.pages.dev` 可访问全部 6 类页面
-- [ ] 5. 推送链路验证：改一个标点 → push → 自动重新构建 → 线上生效（1~2 分钟内）
-- [ ] 6. 回滚演练：GitHub revert 一次提交 → 自动构建恢复旧版
-- [ ] 7. 404 路由确认：访问不存在路径返回 404 页面（Pages 对 `dist/404.html` 的识别）
-- [ ] 8. README 补"部署与回滚"章节：上述链路的白话操作卡
+- [x] 1. 产出 `doc/account-setup.md`：GitHub 建仓（**public**）+ Cloudflare Pages 连接步骤（用户网页点击可完成的粒度，含免费档说明）
+- [ ] 2. 推送主分支到 GitHub；确认 `.gitignore` 生效（raw/、thumbs/ 不在远端）｜ 属**外部动作**，命令块已备好，待用户/主 Agent 明确确认后执行
+- [x] 3. Cloudflare Pages 配置：构建命令 `npm run build`、输出目录 `dist`、Node 版本与 `engines` 一致（环境变量形式）｜ 本地已建 `.nvmrc`=`24` 并测对齐；Pages 项目 env `NODE_VERSION=24` 属云端填写（在 account-setup.md §4 已给出）
+- [ ] 4. 首次构建排错：云端构建通过，`*.pages.dev` 可访问全部 6 类页面 ｜ 属外部
+- [ ] 5. 推送链路验证：改一个标点 → push → 自动重新构建 → 线上生效（1~2 分钟内）｜ 属外部
+- [ ] 6. 回滚演练：GitHub revert 一次提交 → 自动构建恢复旧版 ｜ 属外部
+- [x] 7. 404 路由确认：访问不存在路径返回 404 页面（Pages 对 `dist/404.html` 的识别）｜ 本地：`dist/404.html` 存在断言 + `about-404.spec.ts` 在 astro preview 已覆盖同构 404 状态；线上 Pages 目视属外部
+- [x] 8. README 补"部署与回滚"章节：上述链路的白话操作卡
 
 ## 验收标准
 

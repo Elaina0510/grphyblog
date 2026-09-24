@@ -61,7 +61,8 @@ npm install
 | 跑测试覆盖率 | `npm run coverage` | 需要 `@vitest/coverage-v8`，已装。 |
 | 跑端到端冒烟 | `npm run test:e2e` | Playwright + `astro preview`，用例在 `tests/e2e/`。首次需先执行 `npm run test:e2e:install` 下载 Chromium。 |
 
-发布流程：`npm run import` 导入照片 → 本地 `npm run dev` 确认 → 去掉草稿标记 → `git add` / `git commit` / `git push` → Cloudflare Pages 自动构建上线。完整步骤看下面第 3 节。
+发布流程：`npm run import` 导入照片 → 本地 `npm run dev` 确认 → 去掉草稿标记 → `git add` / `git commit` / `git push` → Cloudflare Pages 自动构建上线。完整步骤看下面第 3 节；
+**第一次上线要做的账号操作（GitHub 建仓、Pages 连接）与回滚**看下面第 5 节，逐项点网页的细节看 `doc/account-setup.md`。
 
 ### 附：本机 npm 报 `ECONNREFUSED 127.0.0.1:7897` 时（排障，可选）
 
@@ -178,3 +179,92 @@ astro.config.mjs      构建与图片规格参数（唯一的图片参数出处�
 **图片规格只有一处**：展示版长边 2560px、缩略图长边 800px、输出格式 WebP，全部定义在
 `astro.config.mjs`（导出 `IMAGE_SPECS` 等具名常量供脚本与工具函数 import）。
 以后"想更清晰/换格式"，只改这一个文件再重新构建即可。
+
+## 5. 部署与回滚（上线只做一次，之后只管 push）
+
+> 一句话：**代码放在 GitHub 的公开仓库里，Cloudflare Pages 盯着这个仓库——你一 push，它就自动构建上线。**
+> 想退回旧版本，就在 GitHub 网页上点几下"回滚"，同样自动生效。**日常发布不用登录 Cloudflare。**
+> 每一步"点哪个按钮、填什么框、看到什么才算对"的细粒度清单在 **`doc/account-setup.md`**；下面只是骨架。
+
+### 5.1 一次性上线（照 `doc/account-setup.md` 做，约 20 分钟）
+
+1. **GitHub 建一个空的公开仓库**（仓库名建议就叫 `grphyblog`）。
+   - **必须是 Public**：网站本来就是给外人看的，后台 `/admin` 的门槛靠 GitHub 授权来管，不靠"把仓库藏起来"。
+   - 建仓时 **README / .gitignore / License 三个开关一个都别碰**。本地已经有 `.gitignore` 了，远端再加一份会打架。
+2. **把本地仓库推上去**（⚠️ 这一步会把内容放到公网，**执行前请你确认**；命令在项目目录的 Git Bash 里跑）：
+
+   ```bash
+   git status                       # 先看一眼：不该有 raw/ thumbs/ 的东西冒出来
+   git remote add origin <仓库地址>  # 只跑一次，把本地和 GitHub 连起来
+   git push -u origin main          # 上传；第一次会弹浏览器让你登录 GitHub 授权
+   ```
+
+   推完到 GitHub 页面上确认：`package-lock.json` 和 `.nvmrc` 这两个文件**必须在**，
+   `raw/`、`thumbs/` 这两个目录**必须不在**。
+3. **Cloudflare Pages 连上这个仓库**：登录 <https://dash.cloudflare.com/> → 左侧 **Workers & Pages** →
+   **Create** → 选 **Pages** 标签 → 连 Git → 选 `grphyblog`，然后**照抄这几格**：
+
+   | 界面字段 | 填什么 |
+   | --- | --- |
+   | Production branch | `main` |
+   | Framework preset | `Astro`（下拉没有就选 `None`） |
+   | Build command | `npm run build` |
+   | Build output directory | `dist` ← 漏了这一格，上线就是整站 404 |
+   | Environment variables | `NODE_VERSION` = `24`（与 `.nvmrc`、`engines.node` 三处同一口径） |
+
+4. 等 1~3 分钟构建变绿 → 打开给的免费域名（形如 `https://grphyblog.pages.dev`）验收 6 类页面。
+   免费档特点：静态内容与流量不加钱，只有一"每月构建次数"的上限，本项目日常用不满。
+
+### 5.2 Node 版本为什么会写两份
+
+云端构建要用哪个 Node，由仓库根目录的 **`.nvmrc`**（内容就是一行 `24`）决定，Cloudflare Pages 会主动读它；
+本地则看 `package.json` 的 `engines.node: "24"`。两处数字必须一样，否则最常见的现象是
+"本地 `npm run build` 好好的，云端构建直接报错"。不放心就在 Pages 的环境变量里再加一条 `NODE_VERSION=24` 兜底。
+`npm run test:run` 里有一条断言专门盯着这件事（`.nvmrc` 存在、值是 24、且没被 `.gitignore` 吃掉）。
+
+### 5.3 以后每次发布（你只用记这四条命令）
+
+```bash
+git status
+git add src/content
+git commit -m "photo: 导入日常帧系列 5 张"
+git push
+```
+
+推完等 1~2 分钟，刷新线上地址（`Ctrl` + `F5` 强刷，绕开浏览器缓存）就是新内容。
+只想验证"链路还活着"，改一个标点再 push 一次就行（`doc/account-setup.md` 第 11 节）。
+
+### 5.4 回滚 = 在 GitHub 网页上点几下
+
+发现刚上线的内容有问题，**不用命令行也能退回去**。先按"坏的范围"选一条：
+
+**A. 只有一两个文件改坏了 → 网页直接编辑回去（最省事、必然可行）**
+
+1. 仓库里点开那个文件 → 右上角 **铅笔图标**（Edit this file）。
+2. 改回原样 → 右上 **Commit changes…** → 选 **"Commit directly to the `main` branch"** → **Commit changes**。
+3. 这就等于一次 push → Pages 自动构建 → 1~2 分钟后线上就回去了。
+
+**B. 整批退回到某次提交之前 → compare 链接法**
+
+1. 仓库 → **Commits** → 找到"最近一次还好的"那个提交 → 点它右边的 **⧉**（复制提交编号）。
+2. 浏览器地址栏拼上（`Ctrl` + `L` 全选后粘贴回车）：
+   `https://github.com/<你的用户名>/grphyblog/compare/main...那个编号?expand=1`
+3. **Create pull request** → 标题会自动写成 `Revert to the state at …`（看到这个就说明方向对了）→ **Merge pull request**。
+4. 合并本身就是一次 push → Pages 自动构建 → 1~2 分钟后线上回到旧版。
+
+> B 这条依赖 GitHub"比较到旧提交就自动生成 Revert 标题"的行为。**要是页面提示没有可比较/可合并的更改，别硬试**，
+> 回到 A，或者用命令行的 `git revert --no-edit <出问题的提交编号>` 再 `git push`（必然成功，且只留新记录、不改历史）。
+> ⚠️ 唯一别做的事：用 `git push --force` / `git reset --hard`"回滚"——那会改写历史，可能顺手毁掉没备份的东西。
+> 五条回滚路径的完整分工（含 Cloudflare 端的一键应急回退）见 `doc/account-setup.md` 第 6 节。
+
+### 5.5 404 与几个已知坑
+
+- **404 不用你配**：构建会产出 `dist/404.html`，Cloudflare Pages 认这个约定，访问任何不存在的路径
+  都会显示本站那个带「回首页」按钮的页面，**不需要** `_redirects` 之类的配置文件。
+- **线上整站 404** → 九成是 `Build output directory` 没填 `dist`。
+- **构建失败** → 先看是不是 Node 版本不符、或 `package-lock.json` 没跟上 `package.json`（改依赖后要 `npm install` 并把锁文件一起提交）。
+- **某张图本地能看、线上打不开** → 路径大小写问题（Windows 不分大小写，云端 Linux 分）。
+  更多对号入座看 `doc/account-setup.md` 第 7 节排错表。
+- 域名：v1 就用 `*.pages.dev` 免费子域。要换/加自定义域名，日后在 Pages 项目设置里绑，
+  并把 `astro.config.mjs` 里的 `site` 改成新域名再重新构建（见 5.1 第 3 步的域名口径）。
+
