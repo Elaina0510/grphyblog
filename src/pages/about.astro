@@ -1,0 +1,151 @@
+---
+/* ============================================================================
+ * about.astro —— 关于页 = 版权页（colophon）（about-404 任务 2）
+ *
+ * 定位（doc/designv0.0.1.md §5「关于 = 简介 + 社交/联系链接」+ §10「关于 = 版权页
+ * （colophon）形态」、DESIGN.md §7.5 `.colophon` 家具、doc/preview/home.html 版权页段）：
+ *   把「关于」排成一本自印书的版权页——
+ *   ① 章题行   —— COLOPHON 册号 + 题名（题名直接取 site.nav 里 about 项的 label，不二次写导航措辞）
+ *   ② 书名牌   —— 竖排宋体书名（bookName.cjk）+ 拉丁竖列（bookName.latin）+「著述 ·」行（SiteMark inline）
+ *   ③ 两栏     —— .colophon 家具（global.css）：
+ *                 左 = 简介（intro.text）+ 社交/联系链接；右 = 制作信息表（colophon 的 term↔value dl）
+ *
+ * 硬约束（勿偏离）：
+ *   - 全部站点级事实只从 src/data/site.json 取（DESIGN §8.2）：简介、制作信息、社交/联系、
+ *     品牌串、书名、导航措辞；页面不硬编码任何一条文案 → 改 site.json 文案，重建即生效；
+ *   - 占位规则（DESIGN §8.2）：intro.sample / social[].placeholder / contact.placeholder
+ *     为 true 时渲染必带朱砂 ※示例；contact.email 为空显示 ※待补；placeholder 项的 href 一律 #，
+ *     不把虚构链接当真值给出去；
+ *   - 复用 Base.astro（书脊 / 导航 / 页脚 / 入场编排），current="about"；页面不写第二套导航；
+ *   - 关于页无照片（design §5），不引 PhotoPlate / PageChip；UI 不加新色相；
+ *   - 路由与导航 href 一致：Astro directory 格式产出 dist/about/index.html → /about/ 命中；
+ *   - 样式值走 var(--token)，页面 <style> 零裸色值 / 零曲线 / 零字面尺寸（仅 var()/0/关键字）。
+ * ==========================================================================*/
+import Base from '../layouts/Base.astro';
+import SiteMark from '../components/SiteMark.astro';
+import site from '../data/site.json';
+
+/* 章题 = 书脊导航里 about 项自己的措辞（site.json 唯一出处，不在页面二次硬编码）。 */
+const aboutLabel = site.nav.find((item) => item.key === 'about')?.label ?? '关于';
+
+/* 占位口径（DESIGN §8.2）：sample/placeholder=true 的值未经作者确认为真 → 必须带 ※ 记号。 */
+const introSample = site.intro.sample === true;
+const contactEmail = (site.contact.email ?? '').trim();
+const contactSample = site.contact.placeholder === true;
+---
+
+<Base
+  current="about"
+  title={`${aboutLabel} · 关于这个影集 —— ${site.name.display}`}
+  description={site.description}
+  bodyClass="about-page"
+>
+  <div class="wrap">
+    <section class="about-page-main" aria-label={`${aboutLabel} · 版权页`}>
+      <div class="chapter-head rise">
+        <span class="chapter-no">COLOPHON</span>
+        <h1 class="t-headline">{aboutLabel}</h1>
+        <span class="chapter-sub">书名 · 著者 · 制作信息</span>
+      </div>
+
+      <!-- 书名牌：真书版权页的开场——竖排书名 + 拉丁竖列 + 著述行（三声部：书/数） -->
+      <div class="title-plate rise">
+        <h2 class="bookname">
+          <span class="t-headline v-writing">{site.bookName.cjk}</span>
+          <span class="mono v-latin">{site.bookName.latin}</span>
+        </h2>
+        <p class="mono title-plate__byline">
+          著述 · <SiteMark variant="inline" />
+        </p>
+      </div>
+
+      <!-- 两栏（.colophon 家具，窄屏自动归一）：左 = 简介 + 社交/联系；右 = 制作信息表 -->
+      <div class="colophon rise">
+        <div>
+          <h3>关于{site.name.cjk}</h3>
+          <p class="t-body">
+            {site.intro.text}
+            {introSample ? <span class="demo"> ※示例</span> : null}
+          </p>
+          <div class="colophon-links">
+            {
+              site.social.map((item) => {
+                const external = !item.placeholder && /^https?:/i.test(item.href);
+                return (
+                  <a
+                    key={item.key}
+                    class="mono"
+                    href={item.placeholder ? '#' : item.href}
+                    target={external ? '_blank' : undefined}
+                    rel={external ? 'noopener noreferrer' : undefined}
+                  >
+                    {item.label} ↗
+                    {item.placeholder ? <span class="demo">※示例</span> : null}
+                  </a>
+                );
+              })
+            }
+            {
+              contactEmail ? (
+                <a class="mono" href={`mailto:${contactEmail}`}>
+                  联系 ↗
+                  {contactSample ? <span class="demo"> ※示例</span> : null}
+                </a>
+              ) : (
+                <span class="mono">
+                  联系 <span class="demo">※待补</span>
+                </span>
+              )
+            }
+          </div>
+        </div>
+
+        <div>
+          <h3>本书制作信息</h3>
+          <dl>
+            {
+              site.colophon.flatMap((row) => [
+                <dt key={`${row.term}-t`}>{row.term}</dt>,
+                <dd key={`${row.term}-d`}>{row.value}</dd>,
+              ])
+            }
+          </dl>
+          <p class="mono colophon-legend">
+            ※示例 / ※待补 —— 尚未由作者确认为真或仍空缺的值，以朱砂标出，不作事实展示。
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</Base>
+
+<style>
+  /* 书名牌锁排：竖列与著述行同块，页脚线收尾——只允许 var() / 0 / 关键字 */
+  .title-plate {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--gap-stack-sm);
+    padding-bottom: var(--gap-stack-md);
+    margin-bottom: var(--gap-stack-lg);
+    border-bottom: var(--rule-w) solid var(--rule);
+  }
+
+  .title-plate__byline {
+    letter-spacing: var(--tracking-label);
+  }
+
+  /* dl 的 dd 不吃浏览器默认缩进（值列与 term 列的网格对齐由 .colophon dl 负责） */
+  .colophon dl dd {
+    margin: 0;
+    color: var(--ink);
+  }
+
+  .colophon-links .demo {
+    margin-left: var(--gap-stack-xs);
+  }
+
+  .colophon-legend {
+    margin-top: var(--gap-stack-md);
+  }
+</style>

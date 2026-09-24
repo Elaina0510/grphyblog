@@ -1,0 +1,99 @@
+---
+/* ============================================================================
+ * 404.astro —— 「此页缺失」引导页（about-404 任务 3；design §5：404 = 引导回首页）
+ *
+ * zine 口径：整站是一册自印摄影书，404 就是一页没印上的空白 ——
+ *   ① 章题行（404 · NOT FOUND / 此页缺失 / 翻到了一页空白）；
+ *   ② 空白页图框：纸深底 + 墨线框 + 朱砂闲章「此页缺失」（.stamp 家具，全站唯一圆角）；
+ *   ③ 明确出口：一个醒目的回首页链接（href="/"），另书脊导航由 Base 统一在场；
+ *      current="none" —— 404 不是四页之一，书脊不点亮任何项。
+ *
+ * 构建侧：Astro 对 src/pages/404.astro 自动生成 dist/404.html（非 /404/index.html），
+ *   astro preview 与 Cloudflare Pages 都以 404 状态命中本页；产物路径由
+ *   tests/e2e/about-404.spec.ts 用 fs + 真实 HTTP 双重钉住。
+ *
+ * 硬约束：文案不含站点事实（措辞取 site.json：name.display / nav 各项 label）；
+ *   样式只 var()/关键字，零裸色值 / 零曲线 / 零字面尺寸；UI 不加新色相、无照片。
+ * ==========================================================================*/
+import Base from '../layouts/Base.astro';
+import site from '../data/site.json';
+
+const homeLabel = site.nav.find((item) => item.key === 'home')?.label ?? '首页';
+const navLabels = site.nav.map((item) => item.label).join(' · ');
+---
+
+<Base
+  current="none"
+  title={`404 · 此页缺失 —— ${site.name.display}`}
+  description="这一页没有印在这册书里 —— 回到开卷，重新翻。"
+  bodyClass="notfound-page"
+>
+  <div class="wrap">
+    <section class="notfound" aria-label="404 · 此页缺失">
+      <div class="chapter-head rise">
+        <span class="chapter-no">404 · NOT FOUND</span>
+        <h1 class="t-headline">此页缺失</h1>
+        <span class="chapter-sub">翻到了一页空白</span>
+      </div>
+
+      <!-- 缺失页图框：像书里忘印/裁错的一页，空框 + 闲章 -->
+      <div class="missing-page rise">
+        <span class="stamp" aria-hidden="true">此页<br/>缺失</span>
+        <p class="t-body missing-page__note">
+          要找的那一页没有印在这册书里 —— 也许还没写，也许链接抄错了行。
+        </p>
+        <p class="mono">
+          本站是纯静态影集：没有下一页可以蒙着翻，也没有站内搜索可捞。
+        </p>
+      </div>
+
+      <!-- 明确出口：回首页（design §5「引导回首页」） -->
+      <p class="notfound-home-line rise">
+        <a class="notfound-home" href="/" aria-label="回首页">← 回到{homeLabel}</a>
+      </p>
+      <p class="mono notfound-note rise">书口侧脊始终在场：{navLabels}。</p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  /* 空白页图框：纸深底压在纸面上，墨线框；闲章复用 global 的 .stamp（父级需定位） */
+  .missing-page {
+    position: relative;
+    display: grid;
+    gap: var(--gap-stack-sm);
+    max-width: var(--measure);
+    border: var(--rule-w) solid var(--ink);
+    background: var(--paper-deep);
+    padding: var(--gap-stack-lg) var(--gap-stack-lg) calc(var(--gap-stack-lg) * 2);
+  }
+
+  .missing-page__note {
+    color: var(--ink);
+  }
+
+  /* 回首页：唯一的大按钮 —— 零圆角，墨框，hover 转朱砂（盖章级语义） */
+  .notfound-home-line {
+    margin-top: var(--gap-stack-lg);
+  }
+
+  .notfound-home {
+    display: inline-block;
+    border: var(--rule-w) solid var(--ink);
+    padding: var(--gap-stack-sm) var(--gap-stack-md);
+    text-decoration: none;
+    font-family: var(--font-serif);
+    font-weight: var(--weight-book);
+    letter-spacing: var(--tracking-head);
+    color: var(--ink);
+    background: var(--paper);
+  }
+
+  .notfound-home:hover {
+    border-color: var(--cinnabar);
+  }
+
+  .notfound-note {
+    margin-top: var(--gap-stack-sm);
+  }
+</style>
