@@ -7,6 +7,7 @@
  *   ② .essay 对置：左 = 正文（散文流），右 = .marginalia 页边批注（日期 / 标签 / 插图帧数 / 资源夹）
  *   ③ 正文内联插图：与文字**同流交替**的 PhotoPlate 图版（不是另起照片流），
  *      每张挂灯箱接线 + 归属 post-<slug> 的 frames JSON 岛
+ *   ④ 夜底灯箱外壳（<Lightbox />，仅在有插图时挂载；数据只读 ③ 那座 frames 岛，不另起来源）
  *
  * 正文内联插图管线（任务 4，实现方式 (b)：render 得 HTML 后做字符串后处理）：
  *   entry.rendered.html → processPostIllustrations() 切成 parts（文本段 / 插图交替）
@@ -36,6 +37,7 @@
 import Base from '../../layouts/Base.astro';
 import PhotoPlate from '../../components/PhotoPlate.astro';
 import ExifCard from '../../components/ExifCard.astro';
+import Lightbox from '../../components/Lightbox.astro';
 import type { CollectionEntry } from 'astro:content';
 import { getPublishedPosts } from '../../utils/collections';
 import { contentImageUrl, entryResourceDir, resolveContentImage } from '../../utils/contentImages';
@@ -231,6 +233,9 @@ const hasBody = hasNoteContent(entry.body) || body.plateCount > 0;
       </div>
     </section>
   </div>
+
+  <!-- ④ 夜底灯箱外壳：正文真引用了插图才挂；帧数据只读 .post-body 里那座 post-<slug> 的 frames 岛 -->
+  {total > 0 ? <Lightbox label={`${title} · 插图灯箱`} /> : null}
 </Base>
 
 {

@@ -7,6 +7,7 @@
  *   ② 封面满版跨页（首帧，LCP eager）
  *   ③ 拍摄手记（entry.body 渲染 · 左右对置 .duo；body 为空则整块自动省略）
  *   ④ 照片流（按 sidecar 顺序：PhotoPlate + PageChip 帧号 + ExifCard + 灯箱数据契约）
+ *   ⑤ 夜底灯箱外壳（<Lightbox />，仅在有帧时挂载；数据只读 ④ 的 frames 岛，不另起来源）
  *
  * 灯箱数据契约（§2，主 Agent 钉死，跨 home/series/posts 共用）：
  *   照片流容器内输出**一个**内联 JSON 岛：
@@ -30,6 +31,7 @@ import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PhotoPlate from '../../components/PhotoPlate.astro';
 import ExifCard from '../../components/ExifCard.astro';
+import Lightbox from '../../components/Lightbox.astro';
 import type { CollectionEntry } from 'astro:content';
 import { getPublishedSeries } from '../../utils/collections';
 import { contentImageUrl, contentImageMap, entryResourceDir } from '../../utils/contentImages';
@@ -281,6 +283,9 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
       </div>
     ) : null
   }
+
+  <!-- ⑤ 夜底灯箱外壳：有帧才挂（空册不产图版，也不该有壳）；数据仍只读上面那座 frames 岛 -->
+  {total > 0 ? <Lightbox label={`${entry.data.title} · 照片灯箱`} /> : null}
 </Base>
 
 {

@@ -16,7 +16,7 @@
 | 6 | 系列页 | [series-pages.md](series-pages.md) | 2,3,4 | 4 | [x] |
 | 7 | 随笔页 | [posts-pages.md](posts-pages.md) | 2,4 | 4 | [x] |
 | 8 | 关于页与 404 | [about-404.md](about-404.md) | 4 | 4 | [x] |
-| 9 | 灯箱 | [lightbox.md](lightbox.md) | 2,4,6 | 4/5 | [ ] |
+| 9 | 灯箱 | [lightbox.md](lightbox.md) | 2,4,6 | 4/5 | [x] |
 | 10 | 部署上线 | [deployment.md](deployment.md) | 1–8 可构建 | 2 | [ ] |
 | 11 | Decap 后台 | [decap-cms.md](decap-cms.md) | 2,10 | 3 | [ ] |
 | 12 | 性能与验收 | [performance-acceptance.md](performance-acceptance.md) | 全部 | 5 | [ ] |
@@ -28,7 +28,7 @@
 - [x] 里程碑 1 骨架+导入跑通 = 模块 1,2,3
 - [ ] 里程碑 2 首次上线 = 模块 10（前 8 模块可构建为前置）
 - [ ] 里程碑 3 后台文字闭环 = 模块 11
-- [ ] 里程碑 4 视觉+灯箱（首页视觉稿已完成，剩实施与打磨）= 模块 4,5,6,7,8,9
+- [x] 里程碑 4 视觉+灯箱（首页视觉稿已完成，剩实施与打磨）= 模块 4,5,6,7,8,9
 - [ ] 里程碑 5 双端验收 = 模块 12
 
 ## 已知缺口 / 风险备注

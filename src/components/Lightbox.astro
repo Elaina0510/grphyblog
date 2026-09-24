@@ -1,0 +1,976 @@
+---
+/* ============================================================================
+ * Lightbox.astro —— 夜底全屏灯箱（lightbox 模块；签名交互）
+ *
+ * 规范出处：doc/designv0.0.1.md §5「点击任意照片 → 全屏灯箱；左右键/滑动切帧，Esc 退出；
+ * 灯箱内可展开 EXIF 信息条」+ §10「夜底全屏、图版 ↔ 灯箱像 View Transition 形变、拍摄单从页边滑入、
+ * 开启时背景 inert、换帧 aria-live」+ DESIGN.md §6（曲线/降级）+ §7.6（灯箱实现要点）。
+ *
+ * 数据来源（唯一）：页面上的 `script.lightbox-frames[data-gallery]` JSON 岛（sidecar → 构建期序列化），
+ * 图版根元素带 data-lightbox / -gallery / -index。本组件**不产数据**，只消费契约，
+ * 所以首页 / 系列详情 / 随笔插图三处入口的行为天然一致。
+ *
+ * 结构职责：
+ *   外壳（本文件的模板）：夜底遮罩 · 图区 · 页码片 · 状态行（同时是 aria-live）·
+ *                        开/关/左右/拍摄单按钮 · 页边拍摄单抽屉；
+ *   脚本（本文件的 <script>，Vanilla、零框架）：帧解析 · 缩略图秒开 + 展示图渐进替换 ·
+ *                        相邻帧预加载 · View Transition 形变（不支持则淡入缩放）·
+ *                        键盘/手势 · inert 背景 · 焦点圈闭与回归 · 拍摄单渲染。
+ *   纯逻辑（可单测）在 src/utils/lightbox.ts 与 src/utils/exifFormat.ts。
+ *
+ * 挂载：只在含 [data-lightbox] 图版的页面渲染（首页 / 系列详情 / 随笔详情）。
+ *       运行期还有一道保险：页面上没有可灯箱图版时脚本整体不启动，外壳永远保持 hidden。
+ *
+ * 为什么 <style is:global>：灯箱的图片元素是运行期 createElement 出来的（避免在页面里
+ * 预先摆一张「没有真宽高」的 <img>，也符合 §6「显式宽高来自 sidecar」），
+ * 而 View Transition 的 ::view-transition-*(frame) 伪元素根本不在组件子树里 ——
+ * 两者都拿不到 scoped 类名，所以本组件的样式显式全局，类名统一 lb- 前缀避免碰撞。
+ *
+ * 硬约束：样式值只走 global.css 的 var()（组件层零色值 / 零 px 字面量，见
+ *        tests/unit/design-no-hardcode.test.ts）；新度量已按 DESIGN §7.6 落进 global.css 1.13。
+ * ==========================================================================*/
+interface Props {
+  /** dialog 的可读名（无障碍）；措辞按页面语境可覆盖。 */
+  label?: string;
+}
+
+const { label = '照片灯箱' } = Astro.props;
+---
+
+<!--
+  外壳默认 hidden：无 JS 的浏览器不显示任何东西（内容仍在页面图版里，不构成信息缺失）。
+  脚本启动时会把本元素搬到 <body> 末尾 —— 开灯箱时要把 .spine / .page 整片设成 inert，
+  灯箱自己必须活在那层之外，否则会被自己锁死。
+-->
+<div
+  class="lb"
+  data-lb
+  role="dialog"
+  aria-modal="true"
+  aria-label={label}
+  tabindex="-1"
+  hidden
+>
+  <div class="lb-scrim" data-lb-scrim></div>
+
+  <header class="lb-bar">
+    <span class="lb-chip" data-lb-chip></span>
+    <div class="lb-actions">
+      <button
+        type="button"
+        class="lb-btn"
+        data-lb-exif
+        aria-expanded="false"
+        aria-controls="lb-sheet"
+        aria-label="展开或收起本帧拍摄单"
+      >
+        拍摄单
+      </button>
+      <button type="button" class="lb-btn" data-lb-close aria-label="关闭灯箱（Esc 键）">
+        关闭<span class="lb-btn__key" aria-hidden="true">Esc</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="lb-stage" data-lb-stage>
+    <!-- 帧图（lb-img）由脚本在运行期插入到这里，随后两个按钮保持在其上层 -->
+    <button
+      type="button"
+      class="lb-nav"
+      data-lb-prev
+      aria-label="上一帧（左方向键）"
+    >
+      <span aria-hidden="true">←</span>
+    </button>
+    <button
+      type="button"
+      class="lb-nav"
+      data-lb-next
+      aria-label="下一帧（右方向键）"
+    >
+      <span aria-hidden="true">→</span>
+    </button>
+  </div>
+
+  <footer class="lb-bar lb-bar--foot">
+    <!-- 运行期才填内容的槽位一律不用 <p>：外壳关闭时它们是空的，空段落会被当成正文管线的产物 -->
+    <span class="lb-title" data-lb-title></span>
+    <!-- 换帧播报：<output> 天生是「刚算出来的结果」，同时挂 aria-live 做帧号播报 -->
+    <output class="lb-live" data-lb-live role="status" aria-live="polite"></output>
+  </footer>
+
+  <aside class="lb-sheet" id="lb-sheet" data-lb-sheet aria-label="本帧拍摄单" inert>
+    <h2 class="lb-sheet__title" data-lb-sheet-title>拍摄单</h2>
+    <span class="lb-sheet__frame" data-lb-sheet-frame></span>
+    <dl class="lb-sheet__list" data-lb-sheet-list></dl>
+    <p class="lb-sheet__empty" data-lb-sheet-empty hidden>该帧无 EXIF 记录（sidecar 未含参数）。</p>
+    <button
+      type="button"
+      class="lb-btn lb-sheet__close"
+      data-lb-sheet-close
+      aria-label="收起拍摄单"
+    >
+      收起
+    </button>
+  </aside>
+</div>
+
+<style is:global>
+  /* ---- 灯箱骨架：夜底全屏（DESIGN §7.6）----
+     尺寸/色全部走 token；窄屏靠 clamp/min 自适应，故这里不需要（也不允许）再写断点。 */
+  .lb {
+    position: fixed;
+    inset: 0;
+    z-index: var(--lb-z);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: var(--lb-gap);
+    padding: var(--lb-pad);
+    color: var(--paper);
+    font-family: var(--font-sans);
+    overscroll-behavior: contain;
+  }
+
+  .lb[hidden] {
+    display: none;
+  }
+
+  /* 开着灯箱时锁背景滚动。padding-inline-end 补回滚动条宽度（global.css 把滚动条定在
+     同一条 token 上），否则「旧态的图版」与「新态的图版」会横向错开，形变会歪。 */
+  html.lb-lock {
+    overflow: hidden;
+    padding-inline-end: var(--lb-lock-pad);
+  }
+
+  .lb-scrim {
+    position: absolute;
+    inset: 0;
+    background: var(--night);
+  }
+
+  /* 夜底之上：图版浮起用的阴影是全站唯一那条「纸浮在桌上」的影子 */
+  .lb-bar,
+  .lb-stage {
+    position: relative;
+  }
+
+  .lb-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--lb-gap);
+  }
+
+  .lb-actions {
+    display: flex;
+    gap: var(--lb-gap);
+    margin-inline-start: auto;
+  }
+
+  .lb-chip {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-sm);
+    letter-spacing: var(--tracking-wide);
+    color: var(--paper);
+    background: var(--scrim-night);
+    padding: var(--chip-pad-y) var(--chip-pad-x);
+    /* 零圆角是全站规则（印章除外） */
+    border-radius: 0;
+  }
+
+  .lb-title {
+    font-family: var(--font-serif);
+    font-weight: var(--weight-entry);
+    font-size: var(--text-title);
+    letter-spacing: var(--tracking-tight);
+    color: var(--paper);
+  }
+
+  .lb-live {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    letter-spacing: var(--tracking-label);
+    color: var(--paper-dim);
+    margin-inline-start: auto;
+  }
+
+  /* ---- 图区：缩略图秒开 + 展示图渐进替换，都靠显式宽高把盒子先撑住 ---- */
+  .lb-stage {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    /* 横向留给「切帧」手势（pointer 事件），纵向仍可滚动 */
+    touch-action: pan-y;
+  }
+
+  .lb-img {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    background: var(--night);
+    box-shadow: var(--shadow-plate-float);
+  }
+
+  /* ---- 控制按钮：框线是夜底上的细线，hover/聚焦转朱砂（§7.6），触摸目标 ≥ --lb-hit ---- */
+  .lb-btn,
+  .lb-nav {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-md);
+    letter-spacing: var(--tracking-label);
+    color: var(--paper);
+    background: var(--scrim-night);
+    border: var(--rule-w) solid var(--hairline-on-night);
+    border-radius: 0;
+    min-width: var(--lb-hit);
+    min-height: var(--lb-hit);
+    padding: var(--lb-btn-pad);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      right var(--dur-sheet) var(--ease);
+  }
+
+  .lb-btn:hover,
+  .lb-btn:focus-visible,
+  .lb-nav:hover,
+  .lb-nav:focus-visible {
+    color: var(--cinnabar);
+    border-color: var(--cinnabar);
+  }
+
+  .lb-btn:active,
+  .lb-nav:active {
+    color: var(--cinnabar-deep);
+    border-color: var(--cinnabar-deep);
+  }
+
+  .lb-btn__key {
+    color: var(--paper-dim);
+    margin-inline-start: var(--gap-stack-xs);
+  }
+
+  .lb-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--text-label-lg);
+  }
+
+  .lb-nav[data-lb-prev] {
+    left: var(--lb-nav-inset);
+  }
+
+  .lb-nav[data-lb-next] {
+    right: var(--lb-nav-inset);
+  }
+
+  /* 到头就停：另一侧按钮弱化（仍可聚焦，只是不再切帧，焦点不会被吞） */
+  .lb-nav[aria-disabled='true'] {
+    opacity: var(--lb-dim);
+    cursor: default;
+  }
+
+  /* ---- 拍摄单：从页边滑入（--dur-sheet / --sheet-y），收起时对 AT 与 Tab 都不存在 ----
+     纵向只占「图区那一行」（inset-block 让开上/下两条控件带：内衬 + 按钮高 + 栏间距），
+     所以抽屉展开时不会盖住切帧按钮与关闭键。 */
+  .lb-sheet {
+    position: absolute;
+    inset-block: calc(var(--lb-pad) + var(--lb-hit) + var(--lb-gap));
+    right: var(--lb-pad);
+    width: var(--lb-sheet-w);
+    display: grid;
+    align-content: start;
+    gap: var(--gap-stack-md);
+    padding: var(--lb-pad);
+    background: var(--night);
+    border: var(--rule-w) solid var(--hairline-on-night);
+    box-shadow: var(--shadow-plate-float);
+    transform: translate(100%, var(--sheet-y));
+    opacity: 0;
+    overflow: auto;
+    transition:
+      transform var(--dur-sheet) var(--ease),
+      opacity var(--dur-fade) var(--ease);
+  }
+
+  .lb.lb--sheet-open .lb-sheet {
+    transform: none;
+    opacity: 1;
+  }
+
+  /* 抽屉展开时，下一帧按钮让到抽屉左侧（继续可点，不被覆盖） */
+  .lb.lb--sheet-open .lb-nav[data-lb-next] {
+    right: calc(var(--lb-sheet-w) + var(--lb-nav-inset) + var(--lb-gap));
+  }
+
+  .lb-sheet__title {
+    font-family: var(--font-serif);
+    font-weight: var(--weight-book);
+    font-size: var(--text-subtitle);
+    letter-spacing: var(--tracking-head);
+    color: var(--paper);
+  }
+
+  .lb-sheet__frame,
+  .lb-sheet__empty {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-sm);
+    letter-spacing: var(--tracking-label);
+    color: var(--paper-dim);
+  }
+
+  .lb-sheet__list {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--gap-stack-xs) var(--lb-gap);
+    font-family: var(--font-mono);
+    font-size: var(--text-label-md);
+    line-height: var(--leading-label);
+  }
+
+  .lb-sheet__list dt {
+    color: var(--paper-dim);
+    letter-spacing: var(--tracking-label);
+  }
+
+  .lb-sheet__list dd {
+    color: var(--paper);
+    overflow-wrap: anywhere;
+  }
+
+  .lb-sheet__close {
+    justify-self: start;
+  }
+
+  /* ---- 降级①：不支持 View Transition → 淡入 + 极轻缩放（时长/曲线同 token）---- */
+  .lb--fade {
+    animation: lb-fade-in var(--dur-fade) var(--ease) both;
+  }
+
+  .lb--fade-out {
+    animation: lb-fade-in var(--dur-fade) var(--ease) reverse both;
+  }
+
+  @keyframes lb-fade-in {
+    from {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* ---- 形变入场：同名元素的位移/尺寸补间由浏览器完成；
+         图版 ↔ 灯箱那条 (plate) 已在 global.css 备好（--dur-morph + --ease），
+         这里只补灯箱**内部**换帧的方向性过渡。---- */
+  @media (prefers-reduced-motion: no-preference) {
+    ::view-transition-old(frame) {
+      animation: lb-frame-out var(--dur-fade) var(--ease) both;
+    }
+
+    ::view-transition-new(frame) {
+      animation: lb-frame-in var(--dur-fade) var(--ease) both;
+    }
+  }
+
+  @keyframes lb-frame-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateX(calc(var(--lb-dir, 1) * -8%));
+    }
+  }
+
+  @keyframes lb-frame-in {
+    from {
+      opacity: 0;
+      transform: translateX(calc(var(--lb-dir, 1) * 8%));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* ---- 降级②：prefers-reduced-motion 直开直关 ----
+     global.css 那条「时长压到 0.01ms」的总开关已经让灯箱的出现/消失、拍摄单的滑入都变成瞬变；
+     这里只需再关掉灯箱自己的淡入关键帧。注意不要在这里清 transform：
+     .lb-nav 的 translateY(-50%) 是「垂直居中」的布局手段，不是动效，清掉会把按钮推到顶上。 */
+  @media (prefers-reduced-motion: reduce) {
+    .lb--fade,
+    .lb--fade-out {
+      animation: none;
+    }
+  }
+</style>
+
+<script>
+  import { formatExifItems } from '../utils/exifFormat';
+  import {
+    announceText,
+    chipText,
+    clampIndex,
+    neighborIndices,
+    parseFramesIsland,
+    swipeDecision,
+    type LightboxFrame,
+  } from '../utils/lightbox';
+
+  /** View Transition 的最小类型面（不依赖 lib.dom 是否已收录该 API）。 */
+  type StartViewTransition = (cb: () => Promise<void> | void) => { finished?: Promise<unknown> };
+
+  const root = document.querySelector<HTMLElement>('[data-lb]');
+  const plates = Array.from(document.querySelectorAll<HTMLElement>('[data-lightbox]'));
+
+  /** 读一个**长度**型 token 的数值（如 --lb-hit: 44px → 44；尺寸不写死在 JS 里）。 */
+  function readNumber(name: string, fallback: number): number {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const n = Number.parseFloat(raw);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  /** 读一个**时长**型 token 并统一成毫秒（--dur-fade: 0.35s 与 350ms 两种写法都吃得下）。 */
+  function readDurationMs(name: string, fallback: number): number {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const n = Number.parseFloat(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return /ms$/.test(raw) ? n : n * 1000;
+  }
+
+  function boot(shell: HTMLElement, triggers: HTMLElement[]): void {
+    const pick = <T extends HTMLElement>(selector: string) => shell.querySelector<T>(selector);
+
+    const scrim = pick<HTMLElement>('[data-lb-scrim]');
+    const stage = pick<HTMLElement>('[data-lb-stage]');
+    const chip = pick<HTMLElement>('[data-lb-chip]');
+    const live = pick<HTMLElement>('[data-lb-live]');
+    const titleEl = pick<HTMLElement>('[data-lb-title]');
+    const sheet = pick<HTMLElement>('[data-lb-sheet]');
+    const sheetTitle = pick<HTMLElement>('[data-lb-sheet-title]');
+    const sheetFrame = pick<HTMLElement>('[data-lb-sheet-frame]');
+    const sheetList = pick<HTMLElement>('[data-lb-sheet-list]');
+    const sheetEmpty = pick<HTMLElement>('[data-lb-sheet-empty]');
+    const prevBtn = pick<HTMLButtonElement>('[data-lb-prev]');
+    const nextBtn = pick<HTMLButtonElement>('[data-lb-next]');
+    const closeBtn = pick<HTMLButtonElement>('[data-lb-close]');
+    const exifBtn = pick<HTMLButtonElement>('[data-lb-exif]');
+    const sheetCloseBtn = pick<HTMLButtonElement>('[data-lb-sheet-close]');
+
+    // 结构被改坏（少了任一部件）就不启动，绝不半吊子地接管键盘。
+    if (
+      !scrim ||
+      !stage ||
+      !chip ||
+      !live ||
+      !titleEl ||
+      !sheet ||
+      !sheetTitle ||
+      !sheetFrame ||
+      !sheetList ||
+      !sheetEmpty ||
+      !prevBtn ||
+      !nextBtn ||
+      !closeBtn ||
+      !exifBtn ||
+      !sheetCloseBtn
+    ) {
+      return;
+    }
+
+    /* 外壳搬到 <body> 末尾：背景整片要 inert，灯箱不能在那片里。 */
+    document.body.appendChild(shell);
+    sheet.dataset.lbSheetOpen = 'false';
+
+    /* 帧图**只活到灯箱关闭为止**：页面静态 HTML 里的 <img> 必须严格等于「图版那些张」
+       （§6 显式宽高 + 全懒加载的口径由首页/系列页 e2e 扫全页 <img> 钉住），
+       所以开灯箱时才建，关掉就撤；宽高在 paint() 里从 frames 岛的真值写上。 */
+    let image: HTMLImageElement | null = null;
+
+    function ensureImage(): HTMLImageElement {
+      if (image) return image;
+      const el = document.createElement('img');
+      el.className = 'lb-img';
+      el.alt = '';
+      el.setAttribute('decoding', 'async');
+      el.setAttribute('loading', 'lazy');
+      stage.prepend(el);
+      image = el;
+      return el;
+    }
+
+    function dropImage(): void {
+      if (!image) return;
+      image.remove();
+      image = null;
+    }
+
+    const motion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const prefersReduced = (): boolean => motion?.matches === true;
+    const vtHost = shell.ownerDocument as unknown as { startViewTransition?: StartViewTransition };
+    const canMorph = typeof vtHost.startViewTransition === 'function';
+
+    /* ---- 状态 ---- */
+    let frames: LightboxFrame[] = [];
+    let index = 0;
+    let total = 0;
+    let direction = 1; // 1 = 往后翻（向左滑），-1 = 往前翻
+    let open = false;
+    let sheetOpen = false;
+    let opener: HTMLElement | null = null;
+    let loadToken = 0;
+    const framesCache = new Map<string, LightboxFrame[]>();
+    const preloaded = new Set<string>();
+
+    /* =============== 数据：frames 岛（唯一来源）=============== */
+    function framesFor(gallery: string): LightboxFrame[] {
+      const hit = framesCache.get(gallery);
+      if (hit) return hit;
+      const escaped =
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(gallery)
+          : gallery.replace(/["\\]/g, '\\$&');
+      const island = document.querySelector<HTMLScriptElement>(
+        `script.lightbox-frames[data-gallery="${escaped}"]`,
+      );
+      const parsed = parseFramesIsland(island?.textContent);
+      if (parsed.rejected.length > 0) {
+        console.warn(`[lightbox] 图库 ${gallery} 有 ${parsed.rejected.length} 条缺 src 的帧被跳过`);
+      }
+      if (parsed.frames.length === 0) {
+        console.warn(`[lightbox] 图库 ${gallery} 没有可用的 frames 岛（缺脚本标签或内容为空）`);
+      }
+      framesCache.set(gallery, parsed.frames);
+      return parsed.frames;
+    }
+
+    /* =============== 渲染一帧 =============== */
+    function setDims(el: HTMLImageElement, frame: LightboxFrame): void {
+      // 宽高是 sidecar 真值；为 0（数据缺失）时宁可不写，也不伪造尺寸。
+      if (frame.width > 0 && frame.height > 0) {
+        el.width = frame.width;
+        el.height = frame.height;
+      } else {
+        el.removeAttribute('width');
+        el.removeAttribute('height');
+      }
+    }
+
+    function renderSheet(frame: LightboxFrame): void {
+      sheetTitle.textContent = frame.title ? frame.title : '拍摄单';
+      sheetFrame.textContent = `第 ${index + 1} 帧 · 共 ${total} 帧`;
+      sheetList.replaceChildren();
+      const items = formatExifItems(frame.exif);
+      sheetEmpty.hidden = items.length > 0;
+      sheetList.hidden = items.length === 0;
+      for (const item of items) {
+        const dt = document.createElement('dt');
+        dt.textContent = item.label;
+        const dd = document.createElement('dd');
+        dd.dataset.field = item.key;
+        dd.textContent = item.text;
+        sheetList.append(dt, dd);
+      }
+    }
+
+    /** 渐进替换：展示图解码成功后才换上去；失败就留在缩略图，不制造空白。 */
+    function upgradeToFull(el: HTMLImageElement, token: number, frame: LightboxFrame): void {
+      if (!frame.src || frame.src === frame.thumb) {
+        el.dataset.lbSrcState = 'full';
+        return;
+      }
+      const probe = new Image();
+      probe.decoding = 'async';
+      probe.src = frame.src;
+      const swap = (): void => {
+        if (token !== loadToken) return; // 已被更新的帧切走，丢弃这次结果
+        el.src = frame.src;
+        el.dataset.lbSrcState = 'full';
+      };
+      if (typeof probe.decode === 'function') {
+        probe.decode().then(swap, () => undefined);
+      } else {
+        probe.addEventListener('load', swap, { once: true });
+      }
+    }
+
+    /** 预加载左右邻帧的展示图（验收：切帧不明显白屏）；返回本次覆盖到的邻帧索引。 */
+    function preloadNeighbors(from: number): number[] {
+      const neighbors = neighborIndices(from, total, 1);
+      for (const n of neighbors) {
+        const frame = frames[n];
+        if (!frame || preloaded.has(frame.src)) continue;
+        preloaded.add(frame.src);
+        const warm = new Image();
+        warm.decoding = 'async';
+        warm.src = frame.src;
+      }
+      return neighbors;
+    }
+
+    /** 画出当前帧（缩略图秒开 + 文案 + 拍摄单 + 按钮态）。 */
+    function paint(): void {
+      const frame = frames[index];
+      if (!frame) return;
+      const el = ensureImage();
+      const token = (loadToken += 1);
+
+      chip.textContent = chipText(index, total);
+      live.textContent = announceText(index, total, frame.title);
+      titleEl.textContent = frame.title ?? frame.alt;
+      el.alt = frame.alt;
+      setDims(el, frame);
+      el.src = frame.thumb || frame.src;
+      el.dataset.lbSrcState = frame.src === frame.thumb ? 'full' : 'thumb';
+      el.dataset.lbFrame = String(index);
+
+      renderSheet(frame);
+      syncNav();
+      el.dataset.lbPreload = preloadNeighbors(index).join(',');
+      upgradeToFull(el, token, frame);
+    }
+
+    async function paintAndWait(): Promise<void> {
+      const el = ensureImage();
+      paint();
+      // View Transition 的回调可以异步：等缩略图解好码再放行新态快照，
+      // 形变过程中就不会闪一张空盒子。
+      try {
+        await el.decode();
+      } catch {
+        /* 解码失败：继续开合，画面停在已有像素上，不阻断交互 */
+      }
+    }
+
+    function syncNav(): void {
+      prevBtn.setAttribute('aria-disabled', String(index <= 0));
+      nextBtn.setAttribute('aria-disabled', String(index >= total - 1));
+      shell.dataset.lbIndex = String(index);
+      shell.dataset.lbTotal = String(total);
+    }
+
+    /* =============== 背景 inert / 滚动锁 / 焦点 =============== */
+    const supportsInert = 'inert' in HTMLElement.prototype;
+
+    function setBackgroundInert(on: boolean): void {
+      for (const node of Array.from(document.body.children)) {
+        if (node === shell || !(node instanceof HTMLElement)) continue;
+        if (on) {
+          node.dataset.lbBg = 'locked';
+          if (supportsInert) node.setAttribute('inert', '');
+          else node.setAttribute('aria-hidden', 'true');
+        } else if (node.dataset.lbBg === 'locked') {
+          delete node.dataset.lbBg;
+          if (supportsInert) node.removeAttribute('inert');
+          else node.removeAttribute('aria-hidden');
+        }
+      }
+    }
+
+    function lockScroll(on: boolean): void {
+      const html = document.documentElement;
+      if (on) html.classList.add('lb-lock');
+      else html.classList.remove('lb-lock');
+    }
+
+    function focusables(): HTMLElement[] {
+      const nodes = Array.from(
+        shell.querySelectorAll<HTMLElement>('button, a[href], [tabindex]:not([tabindex="-1"])'),
+      );
+      return nodes.filter(
+        (el) => el.closest('[inert]') === null && el.getClientRects().length > 0,
+      );
+    }
+
+    function trapTab(event: KeyboardEvent): void {
+      const items = focusables();
+      if (items.length === 0) {
+        event.preventDefault();
+        shell.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === shell)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    /* =============== 动效编排：形变 / 降级 / 直开 =============== */
+    function setName(el: HTMLElement | null, name: string): void {
+      if (!el) return;
+      if (name) el.style.setProperty('view-transition-name', name);
+      else el.style.removeProperty('view-transition-name');
+    }
+
+    /**
+     * 跑一次带动效的 DOM 变更。
+     * @param kind 'plate' = 图版 ↔ 灯箱的形变（开/合页），'frame' = 灯箱内换帧
+     * @param oldEl 旧态里被命名的元素
+     * @param newEl 新态里被命名的元素（在变更之后命名，避免同名撞车）
+     */
+    function runTransition(
+      kind: 'plate' | 'frame',
+      oldEl: HTMLElement | null,
+      newEl: HTMLElement | null,
+      mutate: () => void | Promise<void>,
+    ): void {
+      if (prefersReduced()) {
+        // 直开直关：不叫 View Transition，也不加淡入类。
+        shell.dataset.lbMotion = 'instant';
+        shell.dataset.lbMorph = '';
+        void mutate();
+        return;
+      }
+
+      if (canMorph) {
+        shell.dataset.lbMotion = 'view-transition';
+        shell.dataset.lbMorph = kind;
+        setName(oldEl, kind);
+        if (kind === 'frame') {
+          document.documentElement.style.setProperty('--lb-dir', String(direction));
+        }
+        const start = (vtHost.startViewTransition as StartViewTransition).bind(vtHost);
+        const transition = start(async () => {
+          await mutate();
+          // 旧元素的命名必须在「新态快照」之前撤掉：同名元素在新态里出现两次，
+          // 浏览器会直接放弃这组形变（Chromium 报 matched more than one）。
+          setName(oldEl, '');
+          setName(newEl, kind);
+        });
+        const done = (): void => {
+          setName(oldEl, '');
+          setName(newEl, '');
+          shell.dataset.lbMorph = '';
+        };
+        if (transition && typeof transition.finished?.then === 'function') {
+          transition.finished.then(done, done);
+        } else {
+          done();
+        }
+        return;
+      }
+
+      // 降级：淡入 + 极轻缩放（曲线/时长同 token，见 DESIGN §6）
+      shell.dataset.lbMotion = 'fade';
+      const out = kind === 'plate' && !open;
+      shell.classList.remove('lb--fade', 'lb--fade-out');
+      shell.classList.add(out ? 'lb--fade-out' : 'lb--fade');
+      const fade = readDurationMs('--dur-fade', 350);
+      window.setTimeout(() => shell.classList.remove('lb--fade', 'lb--fade-out'), fade + 40);
+      void mutate();
+    }
+
+    /* =============== 开 / 关 / 切 =============== */
+    function plateImageOf(plate: HTMLElement): HTMLElement | null {
+      const img = plate.matches('img') ? plate : plate.querySelector<HTMLElement>('img');
+      return img ?? plate;
+    }
+
+    function openAt(plate: HTMLElement): void {
+      if (open) return;
+      const gallery = plate.dataset.lightboxGallery ?? '';
+      const raw = Number(plate.dataset.lightboxIndex);
+      const list = framesFor(gallery);
+      if (list.length === 0) return;
+
+      frames = list;
+      total = list.length;
+      index = clampIndex(Number.isFinite(raw) ? raw : 0, total);
+      direction = 1;
+      opener = plate;
+      open = true;
+      shell.dataset.lbGallery = gallery;
+
+      const source = plateImageOf(plate);
+      const target = ensureImage();
+      runTransition('plate', source, target, async () => {
+        shell.hidden = false;
+        collapseSheet();
+        lockScroll(true);
+        setBackgroundInert(true);
+        await paintAndWait();
+        shell.focus();
+      });
+    }
+
+    function closeLightbox(): void {
+      if (!open) return;
+      const source = image;
+      const target = opener ? plateImageOf(opener) : null;
+      const restore = opener;
+      open = false;
+
+      runTransition('plate', source, target, () => {
+        shell.hidden = true;
+        shell.removeAttribute('data-lb-gallery');
+        lockScroll(false);
+        setBackgroundInert(false);
+        collapseSheet();
+        dropImage(); // 帧图只活在灯箱里：关掉就把页面 <img> 清单还原成图版那些张
+        // 焦点回到触发它的原图版（验收点）
+        restore?.focus();
+      });
+    }
+
+    function go(delta: number): void {
+      if (!open || total <= 1) return;
+      const next = clampIndex(index + delta, total);
+      if (next === index) return;
+      direction = delta > 0 ? 1 : -1;
+      index = next;
+      const el = ensureImage();
+      runTransition('frame', el, el, () => {
+        paint();
+      });
+    }
+
+    function toggleSheet(force?: boolean): void {
+      sheetOpen = force ?? !sheetOpen;
+      shell.classList.toggle('lb--sheet-open', sheetOpen);
+      exifBtn.setAttribute('aria-expanded', String(sheetOpen));
+      if (supportsInert) {
+        if (sheetOpen) sheet.removeAttribute('inert');
+        else sheet.setAttribute('inert', '');
+      } else {
+        sheet.setAttribute('aria-hidden', String(!sheetOpen));
+      }
+      sheet.dataset.lbSheetOpen = String(sheetOpen);
+      if (sheetOpen) {
+        sheetCloseBtn.focus();
+      } else if (sheet.contains(document.activeElement)) {
+        // 抽屉收起后它变成 inert：焦点交还给「拍摄单」按钮，不落回 body（焦点圈闭不破）
+        exifBtn.focus();
+      }
+    }
+
+    /** 跳到指定帧（Home / End 用）：与 go() 同一套形变与绘制。 */
+    function jumpTo(target: number): void {
+      const next = clampIndex(target, total);
+      if (next === index) return;
+      direction = next > index ? 1 : -1;
+      index = next;
+      const el = ensureImage();
+      runTransition('frame', el, el, () => paint());
+    }
+
+    /** 收起拍摄单（关新灯箱 / 关闭灯箱时复用；不抢焦点）。 */
+    function collapseSheet(): void {
+      sheetOpen = false;
+      shell.classList.remove('lb--sheet-open');
+      exifBtn.setAttribute('aria-expanded', 'false');
+      sheet.setAttribute('inert', '');
+      sheet.dataset.lbSheetOpen = 'false';
+    }
+
+    /* =============== 事件接线 =============== */
+    for (const plate of triggers) {
+      // 图版本身是 <figure>：给它可聚焦 + 明示「按下去会开一层」，
+      // 键盘-only 才能完成 开 → 切 → 关（验收）。
+      plate.tabIndex = 0;
+      plate.setAttribute('aria-haspopup', 'dialog');
+    }
+
+    document.addEventListener('click', (event) => {
+      if (open) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const plate = target?.closest<HTMLElement>('[data-lightbox]');
+      if (!plate) return;
+      // 首页的入口图版包在 <a> 里：点照片是看图，不是跳页（进册链在题名那一行）
+      event.preventDefault();
+      openAt(plate);
+    });
+
+    shell.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const button = target.closest<HTMLElement>('[data-lb-prev],[data-lb-next],[data-lb-close],[data-lb-exif],[data-lb-sheet-close]');
+      if (button) {
+        if (button === prevBtn) go(-1);
+        else if (button === nextBtn) go(1);
+        else if (button === closeBtn) closeLightbox();
+        else if (button === sheetCloseBtn) toggleSheet(false);
+        else if (button === exifBtn) toggleSheet();
+        return;
+      }
+      // 空白处（夜底/图区外）点击 = 关闭
+      if (target === scrim || target === stage) closeLightbox();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (!open) {
+        // 未开：可灯箱图版上的 Enter / Space 也能开（键盘-only）
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        const plate = target?.closest<HTMLElement>('[data-lightbox]');
+        if (plate && (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')) {
+          event.preventDefault();
+          openAt(plate);
+        }
+        return;
+      }
+      switch (event.key) {
+        case 'Escape':
+          event.preventDefault();
+          closeLightbox();
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          go(1);
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          go(-1);
+          break;
+        case 'Home':
+          event.preventDefault();
+          jumpTo(0);
+          break;
+        case 'End':
+          event.preventDefault();
+          jumpTo(total - 1);
+          break;
+        case 'Tab':
+          trapTab(event);
+          break;
+        default:
+          break;
+      }
+    });
+
+    // 手势：左右滑切帧、下滑关闭（触摸/笔；鼠标仍走 click，避免与点击冲突）
+    let gesture: { x: number; y: number; id: number } | null = null;
+    stage.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse') return;
+      gesture = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    });
+    stage.addEventListener('pointerup', (event) => {
+      if (!gesture || gesture.id !== event.pointerId) return;
+      const dx = event.clientX - gesture.x;
+      const dy = event.clientY - gesture.y;
+      gesture = null;
+      const hit = readNumber('--lb-hit', 44);
+      const threshold = Math.max(hit, Math.min(window.innerWidth, window.innerHeight) * 0.08);
+      const decision = swipeDecision(dx, dy, threshold);
+      if (decision === 'next') go(1);
+      else if (decision === 'prev') go(-1);
+      else if (decision === 'down') closeLightbox();
+    });
+    stage.addEventListener('pointercancel', () => {
+      gesture = null;
+    });
+  }
+
+  if (root && plates.length > 0) boot(root, plates);
+</script>

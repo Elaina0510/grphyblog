@@ -64,9 +64,10 @@ function findLiterals(code: string): string[] {
 }
 
 describe('组件层零硬编码（DESIGN.md §8.1 / §3 样式集中）', () => {
-  it('src/components/ 下确有图版 / 页码片 / 拍摄单 / 站点标识四件', () => {
+  it('src/components/ 下确有图版 / 页码片 / 拍摄单 / 站点标识 / 灯箱五件', () => {
     expect(COMPONENT_FILES.sort()).toEqual([
       'src/components/ExifCard.astro',
+      'src/components/Lightbox.astro',
       'src/components/PageChip.astro',
       'src/components/PhotoPlate.astro',
       'src/components/SiteMark.astro',

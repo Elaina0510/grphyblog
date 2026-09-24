@@ -182,6 +182,17 @@
   --dropcap-pad: 0.06em 0.12em 0 0;
   --para-gap: 1.4em; /* 散文段间距 */
 
+  /* ---- 1.13b 灯箱度量（DESIGN §7.6：新 token 只能加在 1.13 这一块，组件层零字面量）---- */
+  --lb-z: 90; /* 层级：压过书脊 40 与页内一切 */
+  --lb-pad: clamp(16px, 4vw, 48px); /* 灯箱内衬（夜底到图区/按钮条） */
+  --lb-gap: clamp(10px, 2vw, 22px); /* 灯箱条带之间 */
+  --lb-hit: 44px; /* 触摸目标下限（design §5 移动端） */
+  --lb-btn-pad: clamp(8px, 1.5vw, 14px); /* 按钮内衬 */
+  --lb-nav-inset: clamp(8px, 2vw, 28px); /* 左右切帧按钮到图区边缘 */
+  --lb-sheet-w: min(100%, clamp(240px, 34vw, 420px)); /* 拍摄单抽屉宽（窄屏自动收到 100% 内） */
+  --lb-dim: 0.32; /* 到头那一侧切帧按钮的弱化态 */
+  --lb-lock-pad: 11px; /* 锁背景滚动时补回的滚动条宽（与上面 ::-webkit-scrollbar 同值） */
+
   /* ---- 1.14 断点说明 ---- */
   /* 全站唯一断点 900px（design.json page-narrow）。CSS 不能在媒体查询里用 var()，
      所以它只以字面量出现在下面的 @media 一处；改断点只改那一处。 */

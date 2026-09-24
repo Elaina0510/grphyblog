@@ -16,15 +16,24 @@
  *   - sample/placeholder 字段（intro / indexNote）渲染必带朱砂 ※示例（诚实口径）；
  *   - v1 无分页 / 无标签页 / 无搜索；朱砂仅盖章级 ≤5%；
  *   - 样式值走 var(--token)，页面 <style> 不出现裸色值 / 曲线 / 字面尺寸（仅 fr / var / 关键字）。
+ *
+ * 灯箱接线（lightbox 模块 任务 9「三处入口一致」）：
+ *   开场图 + 精选入口图按 §2 契约各挂 data-lightbox / data-lightbox-gallery="home" / data-lightbox-index，
+ *   并在精选区输出同 gid 的 frames JSON 岛；<Lightbox /> 外壳随页面挂载。
+ *   帧数据仍然**只出自 sidecar**（resolvePhoto 已经带 entry.width/height/exif/thumb），首页不新增任何手写来源。
+ *   开场图与精选首图是同一张（opening 取 featured[0]）→ 按 src 去重共享一帧与同一索引，
+ *   因此图版数（3）可比帧数（2）多，但索引集合恒等于 0..帧数-1。
  * ==========================================================================*/
 import Base from '../layouts/Base.astro';
 import PhotoPlate from '../components/PhotoPlate.astro';
 import ExifCard from '../components/ExifCard.astro';
 import SiteMark from '../components/SiteMark.astro';
+import Lightbox from '../components/Lightbox.astro';
 import site from '../data/site.json';
 import { getPublishedPosts, getPublishedSeries } from '../utils/collections';
 import { contentImageUrl, contentImageMap, entryResourceDir } from '../utils/contentImages';
 import { resolveSeriesCount } from '../utils/photoCount';
+import { buildFramesIslandJson, createFrameRegistry } from '../utils/lightbox';
 import type { Exif, PhotoEntry, PhotoSidecar } from '../types/photoSidecar';
 
 /** 取前 N 的窗口（视觉稿 3–4 条的节奏；数据不足时按实际条数渲染）。 */
@@ -110,6 +119,8 @@ const [firstSeries] = publishedSeries;
 /* ---- 精选区：site.json.featured.photos -> 解析后的可渲染项（缺 sidecar 的自动跳过）---- */
 interface Plate {
   url: string;
+  /** 缩略图 URL（灯箱「秒开」那一层；与 url 同一张 sidecar 记录的两种产物） */
+  thumb: string;
   width: number;
   height: number;
   alt: string;
@@ -128,6 +139,7 @@ const featured: FeaturedItem[] = [];
     if (!photo) return; // 挑了不存在的图：不渲染空板，也不伪造宽高
     featured.push({
       url: photo.url,
+      thumb: photo.thumbUrl,
       width: photo.entry.width,
       height: photo.entry.height,
       alt: f.alt ?? f.title ?? '精选照片',
@@ -143,12 +155,21 @@ const featured: FeaturedItem[] = [];
 let opening: Plate | null = null;
 if (featured[0]) {
   const f = featured[0];
-  opening = { url: f.url, width: f.width, height: f.height, alt: f.alt, title: f.title, exif: f.exif };
+  opening = {
+    url: f.url,
+    thumb: f.thumb,
+    width: f.width,
+    height: f.height,
+    alt: f.alt,
+    title: f.title,
+    exif: f.exif,
+  };
 } else if (firstSeries) {
   const p = resolvePhoto('series', firstSeries.id, firstSeries.data.cover);
   if (p) {
     opening = {
       url: p.url,
+      thumb: p.thumbUrl,
       width: p.entry.width,
       height: p.entry.height,
       alt: `${firstSeries.data.title} · 封面`,
@@ -237,6 +258,37 @@ const latestPosts: PostCard[] = [...publishedPosts]
 
 /* indexNote / intro 是 sample 占位 -> 每行配 ※示例（诚实口径）。 */
 const noteLines: string[] = site.indexNote?.lines ?? [];
+
+/* ---- 灯箱契约（§2）：首页图库 gid = `home`，帧 = 开场图 + 精选入口图 ----
+ * 同一张展示图（开场图就是精选首图）只占一帧，两处图版共享同一 data-lightbox-index。
+ * 顺序：先按精选顺序（= site.json 挑图顺序，其宽高/exif 皆出自 sidecar），再补未占帧的开场图。 */
+const HOME_GALLERY = 'home';
+const registry = createFrameRegistry();
+const featuredIndexes: number[] = featured.map((item) =>
+  registry.indexOf({
+    src: item.url,
+    thumb: item.thumb,
+    width: item.width,
+    height: item.height,
+    alt: item.alt,
+    title: item.title,
+    exif: item.exif,
+  }),
+);
+const openingIndex: number | null = opening
+  ? registry.indexOf({
+      src: opening.url,
+      thumb: opening.thumb,
+      width: opening.width,
+      height: opening.height,
+      alt: opening.alt,
+      title: opening.title,
+      exif: opening.exif,
+    })
+  : null;
+/** frames 岛文本：与 series / posts 同形状（'<' 已转义，防 </script> 提前闭合）。 */
+const lightboxJson: string = buildFramesIslandJson(registry.frames);
+const homeFrameTotal: number = registry.frames.length;
 ---
 
 <Base current="home">
@@ -274,6 +326,9 @@ const noteLines: string[] = site.indexNote?.lines ?? [];
             loading="eager"
             fetchpriority="high"
             data-frame={featured[0] ? featured[0].dataFrame : '0'}
+            lightbox
+            lightboxGallery={HOME_GALLERY}
+            lightboxIndex={openingIndex ?? 0}
           >
             <span class="stamp" aria-hidden="true">
               精选<br />帧
@@ -285,11 +340,11 @@ const noteLines: string[] = site.indexNote?.lines ?? [];
     </section>
   </div>
 
-  <!-- ② 精选区：入口图 = 图版 + 页码片，链到对应系列详情（灯箱接线留 lightbox 模块，先预留 data-frame） -->
+  <!-- ② 精选区：入口图 = 图版 + 页码片，链到对应系列详情；照片本身可点开灯箱（gid=home） -->
   {
     featured.length > 0 ? (
       <div class="wrap">
-        <section aria-label="精选">
+        <section aria-label="精选" data-gallery={HOME_GALLERY}>
           <div class="chapter-head rise">
             <span class="chapter-no">FEATURED</span>
             <h2 class="t-headline">精选</h2>
@@ -308,12 +363,27 @@ const noteLines: string[] = site.indexNote?.lines ?? [];
                   current={i + 1}
                   total={featured.length}
                   data-frame={item.dataFrame}
+                  lightbox
+                  lightboxGallery={HOME_GALLERY}
+                  lightboxIndex={featuredIndexes[i] ?? i}
                 />
                 <span class="home-entry__title t-title">{item.title}</span>
                 <span class="mono">进册 →</span>
               </a>
             ))}
           </div>
+
+          {
+            /* 灯箱帧序列岛（§2）：开场图 + 精选入口图，同 src 只占一帧。 */
+            homeFrameTotal > 0 ? (
+              <script
+                type="application/json"
+                class="lightbox-frames"
+                data-gallery={HOME_GALLERY}
+                set:html={lightboxJson}
+              />
+            ) : null
+          }
         </section>
       </div>
     ) : null
@@ -387,6 +457,9 @@ const noteLines: string[] = site.indexNote?.lines ?? [];
       </div>
     ) : null
   }
+
+  <!-- ⑤ 夜底灯箱外壳（签名交互）：只在真有可灯箱帧时挂载；脚本会把它搬到 <body> 末尾并接管键盘/手势 -->
+  {homeFrameTotal > 0 ? <Lightbox label="首页精选 · 照片灯箱" /> : null}
 </Base>
 
 <style>

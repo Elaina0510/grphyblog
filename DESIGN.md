@@ -345,6 +345,8 @@ Google Fonts CDN 在本机与部署侧不可达（`connect ETIMEDOUT`），必�
 sheet 右栏文字用 `--paper-dim`；开启时背景 `inert`、换帧 `aria-live`；`prefers-reduced-motion` 下无 VT 无 sheet 位移。
 新 token 若需要，**只能加进 `global.css` 的 1.13 区块**，不许写进组件。
 
+灯箱已按此约定在 1.13 落 9 条尺寸令牌（均无新色相/曲线）：`--lb-z`(层级) `--lb-pad` `--lb-gap` `--lb-hit`(44 触摸下限) `--lb-btn-pad` `--lb-nav-inset` `--lb-sheet-w` `--lb-dim`(到头弱化透明度) `--lb-lock-pad`(补滚动条宽，与 `::-webkit-scrollbar` 同值)。
+
 ---
 
 ## 8. 工程约定与验收
