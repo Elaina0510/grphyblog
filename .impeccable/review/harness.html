@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#8a8a8a;overflow-x:hidden}#s{transform-origin:0 0;overflow:hidden}</style></head>
+<body><div id="s"><iframe id="f" src="../../doc/preview/home.html?static=1"></iframe></div>
+<script>
+const q=new URLSearchParams(location.hash.slice(1)||location.search.slice(1));
+const w=+(q.get('w')||1440), s=+(q.get('s')||1);
+const f=document.getElementById('f'), box=document.getElementById('s');
+f.style.cssText='width:'+w+'px;height:900px;border:0;display:block';
+box.style.transform='scale('+s+')';
+window.__ready=f.addEventListener('load',async()=>{
+  const d=f.contentDocument;
+  d.documentElement.style.setProperty('--open-min',Math.min(900,Math.round(w*0.62))+'px');
+  d.querySelectorAll('img[loading="lazy"]').forEach(i=>i.loading='eager');
+  await Promise.all([...d.images].filter(img=>img.getAttribute('src')).map(img=>img.complete?1:new Promise(r=>{img.onload=r;img.onerror=r;})));
+  await new Promise(r=>setTimeout(r,300));
+  const h=d.documentElement.scrollHeight;
+  f.style.height=h+'px';
+  box.style.height=(h*s)+'px';
+  window.__done=true;
+});
+</script></body></html>

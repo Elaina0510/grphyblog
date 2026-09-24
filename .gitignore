@@ -1,0 +1,28 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.astro/
+
+# 本地素材区：相机原图与缩略图暂存，永不进仓库（design §4 原图策略）
+/raw/
+/thumbs/
+
+# 测试与覆盖率产物
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# 环境变量与日志
+.env
+.env.*
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 编辑器与操作系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

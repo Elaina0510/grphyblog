@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-23T23:30:00+08:00",
+  "title": "Design System: 柚 · Justyou 街拍影集",
+  "extensions": {
+    "colorMeta": {
+      "cinnabar": { "role": "primary", "displayName": "朱砂 Cinnabar", "canonical": "#A03B28", "tonalRamp": ["#4A1B12", "#6B271B", "#7E2E1F", "#A03B28", "#B95741", "#CE7C68", "#E0A596", "#EFCEC5"] },
+      "paper": { "role": "neutral", "displayName": "纸白 Paper", "canonical": "#F2F1EC", "tonalRamp": ["#4D4C47", "#6E6D66", "#94928A", "#B9B7AE", "#D5D2C8", "#E8E6DD", "#F2F1EC", "#F8F7F3"] },
+      "ink": { "role": "neutral", "displayName": "墨 Ink", "canonical": "#26241F", "tonalRamp": ["#100F0D", "#1A1916", "#26241F", "#3B3831", "#5B574E", "#85806F", "#B0ABA0", "#D5D2C8"] },
+      "night": { "role": "neutral", "displayName": "夜底 Night", "canonical": "#191816", "tonalRamp": ["#0B0B0A", "#121110", "#191816", "#2A2825", "#3E3B37", "#5B574E", "#84807A", "#B0ACA5"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "书名体 Display", "purpose": "开场跨页竖排书名，全站仅一处。" },
+      "headline": { "displayName": "章节题 Headline", "purpose": "系列名与目次/随笔/版权页章题。" },
+      "title": { "displayName": "条目题 Title", "purpose": "目次行条目、版权页小节。" },
+      "body": { "displayName": "正文 Body", "purpose": "手记与简介，行长 ≤66ch。" },
+      "label": { "displayName": "微标签 Label", "purpose": "册号、帧号、日期、EXIF、页脚——一切测量数据。" }
+    },
+    "shadows": [
+      { "name": "plate-rest", "value": "0 10px 28px -18px rgba(38,36,31,.45)", "purpose": "图版压在纸面上的落纸影，仅图版使用。" },
+      { "name": "plate-float", "value": "0 24px 60px -30px rgba(0,0,0,.9)", "purpose": "灯箱内观赏页的浮起投影。" },
+      { "name": "spine-gutter", "value": "linear-gradient(90deg, rgba(38,36,31,.07), transparent 14px)", "purpose": "书脊与页面之间的书槽，暗示纸厚。" }
+    ],
+    "motion": [
+      { "name": "ease-expo-out", "value": "cubic-bezier(.16,1,.3,1)", "purpose": "全站唯一缓动曲线。" },
+      { "name": "rise", "value": "opacity/transform/clip-path .9s ease-expo-out, 错峰 ≤270ms", "purpose": "入场：整页一次编排，reduced-motion 下直出。" },
+      { "name": "plate-morph", "value": "View Transitions ::view-transition-(old|new)(plate) .42s ease-expo-out", "purpose": "图版 ↔ 灯箱像的形变；命名在回调内转移，结束后必须清除。" },
+      { "name": "sheet-in", "value": "translateY(18px)+opacity .55s ease-expo-out", "purpose": "拍摄单从页边滑入。" },
+      { "name": "plate-hover", "value": "transform scale(1.012) .8s ease-expo-out", "purpose": "满版图版的呼吸级 hover。" }
+    ],
+    "breakpoints": [
+      { "name": "page-narrow", "value": "900px", "purpose": "书脊转吸顶横条、双栏归一、Display 转横排。" }
+    ]
+  },
+  "components": [
+    {
+      "name": "方印 Seal",
+      "kind": "chip",
+      "refersTo": "seal",
+      "description": "书脊末端的朱砂方印，站点署名。",
+      "html": "<span class=\"ds-seal\">柚</span>",
+      "css": ".ds-seal{width:34px;height:34px;background:#A03B28;color:#F2F1EC;display:grid;place-items:center;font-family:'Noto Serif SC',serif;font-weight:900;font-size:15px;box-shadow:0 1px 3px rgba(38,36,31,.25)}"
+    },
+    {
+      "name": "闲章 Stamp",
+      "kind": "chip",
+      "refersTo": "stamp",
+      "description": "图版右上角的圆形描边闲章（如「精选帧」）。",
+      "html": "<span class=\"ds-stamp\">精选<br>帧</span>",
+      "css": ".ds-stamp{position:absolute;top:18px;right:18px;width:44px;height:44px;border-radius:50%;border:1.5px solid #A03B28;color:#A03B28;background:rgba(242,241,236,.92);display:grid;place-items:center;font-family:'Noto Serif SC',serif;font-size:11px;font-weight:600;letter-spacing:.05em;line-height:1.3;text-align:center}"
+    },
+    {
+      "name": "拍摄单 Shotcard",
+      "kind": "card",
+      "refersTo": "shotcard",
+      "description": "压图版右下角的纸白说明签：宋体题名 + 等宽参数行。",
+      "html": "<figcaption class=\"ds-shotcard\"><div class=\"ds-shotcard-t\">逢简 · 伞与幡</div><div class=\"ds-shotcard-m\">GX85 · 2026.09.17 · f/5.6 ※示例 · 1/500s · ISO200</div></figcaption>",
+      "css": ".ds-shotcard{position:absolute;right:0;bottom:0;background:#F2F1EC;border-top:1px solid #D5D2C8;border-left:1px solid #D5D2C8;padding:10px 16px 11px;max-width:min(70%,420px)}.ds-shotcard-t{font-family:'Noto Serif SC',serif;font-size:14px;font-weight:600;letter-spacing:.06em;color:#26241F}.ds-shotcard-m{font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:.06em;color:#5B574E;margin-top:3px}"
+    },
+    {
+      "name": "页码片 Frame-chip",
+      "kind": "chip",
+      "refersTo": "frame-chip",
+      "description": "图版左下帧号：等宽纸白字压 84% 墨底。",
+      "html": "<span class=\"ds-frame-chip\">01 / 03</span>",
+      "css": ".ds-frame-chip{position:absolute;left:14px;bottom:12px;font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:.12em;color:#F2F1EC;background:rgba(25,24,22,.84);padding:3px 9px}"
+    },
+    {
+      "name": "目次行 TOC Row",
+      "kind": "list-item",
+      "refersTo": "toc-row",
+      "description": "点线导引的目录行：册号朱砂 + 宋体题名 + 等宽元数据。",
+      "html": "<a class=\"ds-toc-row\"><span class=\"ds-toc-no\">No.01</span><span class=\"ds-toc-name\">逢简市集</span><span class=\"ds-toc-dots\"></span><span class=\"ds-toc-meta\">3 帧 · 2026.09.17</span></a>",
+      "css": ".ds-toc-row{display:flex;align-items:baseline;gap:14px;text-decoration:none;color:#26241F;padding:20px 4px;border-bottom:1px solid #D5D2C8}.ds-toc-row:hover{background:#E8E6DD}.ds-toc-no{font-family:'Courier Prime',monospace;font-size:12px;color:#A03B28;letter-spacing:.12em;min-width:52px}.ds-toc-name{font-family:'Noto Serif SC',serif;font-weight:600;font-size:19px;letter-spacing:.05em;white-space:nowrap}.ds-toc-dots{flex:1;border-bottom:1px dotted #5B574E;transform:translateY(-4px)}.ds-toc-meta{font-family:'Courier Prime',monospace;font-size:11.5px;color:#5B574E;white-space:nowrap}"
+    },
+    {
+      "name": "书脊导航项 Spine Link",
+      "kind": "nav",
+      "refersTo": "spine-nav-link",
+      "description": "竖排宋体导航；当前项朱砂带下划线。",
+      "html": "<nav class=\"ds-spine-nav\"><a href=\"#\" aria-current=\"page\">开卷</a><a href=\"#\">系列</a><a href=\"#\">随笔</a><a href=\"#\">版权页</a></nav>",
+      "css": ".ds-spine-nav{display:flex;flex-direction:column;gap:26px}.ds-spine-nav a{writing-mode:vertical-rl;text-orientation:upright;font-family:'Noto Serif SC',serif;font-size:14.5px;letter-spacing:.5em;text-decoration:none;color:#5B574E}.ds-spine-nav a:hover,.ds-spine-nav a[aria-current]{color:#A03B28}.ds-spine-nav a[aria-current]{text-decoration:underline;text-underline-offset:4px}.ds-spine-nav a:focus-visible{outline:2px solid #A03B28;outline-offset:3px}"
+    },
+    {
+      "name": "灯箱按钮 Lightbox Button",
+      "kind": "button",
+      "refersTo": "lightbox-btn",
+      "description": "夜底上的细线框切帧按钮，hover 转朱砂。",
+      "html": "<button class=\"ds-lb-btn\">→</button>",
+      "css": ".ds-lb-btn{width:52px;height:64px;background:transparent;border:1px solid rgba(242,241,236,.25);color:#F2F1EC;font-family:'Courier Prime',monospace;font-size:20px;cursor:pointer;transition:border-color .2s,color .2s}.ds-lb-btn:hover{border-color:#A03B28;color:#A03B28}.ds-lb-btn:focus-visible{outline:2px solid #A03B28;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Self-Printed Book（一本自印的摄影书）",
+    "overview": "整个站点是一册摊开的自印摄影书：访客翻跨页而不是扫缩略图网格。纸面是冷调未涂布纸的灰白，文字是印刷墨的黑，全站只有朱砂一色——印章、批注记号与册编号的颜色。界面家具全部来自书的物质世界；照片以满版或跨页图版出现，永远配拍摄单说明签。",
+    "keyCharacteristics": [
+      "纸白 + 墨黑 + 唯一朱砂强调色；照片承担全部色彩",
+      "竖排中文是结构件：书脊导航、栏目名、大标题",
+      "系列编号即册页码（No.01…），帧号即页码片",
+      "微标签走打字机等宽体",
+      "零圆角（印章除外），零渐变文字，禁用玻璃拟态"
+    ],
+    "rules": [
+      { "name": "The One Seal Rule", "body": "朱砂只用于盖章级语义（编号、印章、记号、当前项），面积 ≤5%。", "section": "colors" },
+      { "name": "The Photos Own Color Rule", "body": "UI 永不与照片抢色；照片里的红是照片的红，UI 的朱砂只在纸面上。", "section": "colors" },
+      { "name": "The Three Voices Rule", "body": "竖排大宋体=书，黑体=文，等宽=数据；越界即破功。", "section": "typography" },
+      { "name": "The Positive Tracking Rule", "body": "中文只用正值宽字距（.05em–.5em），永不负字距压中文。", "section": "typography" },
+      { "name": "The Paper-Stack Rule", "body": "深度=图版压在纸上，不是飘在云上；0 偏移彩色光晕违规。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 让照片承担全部色彩，UI 只用纸墨朱三系",
+      "Do 新页面沿用章节题行三段式：册号（等宽朱砂）+ 题名（宋体 900）+ 元数据（等宽墨浅）",
+      "Do 图版必配页码片或拍摄单；文字行长 ≤66ch、行高 1.9",
+      "Do 保持安静页→重图版的翻页节奏，章间留白 --gap-page",
+      "Do 动效一次编排（rise 错峰 + 灯箱形变），尊重 prefers-reduced-motion"
+    ],
+    "donts": [
+      "Don't 给 UI 加照片里没有的第三种彩色；朱砂不做大面积底色",
+      "Don't 用圆角（印章除外）、渐变文字、玻璃拟态、硬偏移阴影",
+      "Don't 把首页做成等权缩略图网格",
+      "Don't 给标题加 kicker/eyebrow 小帽",
+      "Don't 让等宽体承担散文、宋体承担参数表",
+      "Don't 未经 ※示例 标注就展示虚构 EXIF 或站点数据"
+    ]
+  }
+}

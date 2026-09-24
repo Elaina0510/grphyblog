@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>柚 · Justyou —— 街拍影集（视觉样张）</title>
+<meta name="description" content="个人摄影影集首页视觉样张：自印书方向，照片为主，界面退后。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&family=Noto+Sans+SC:wght@400;500&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F2F1EC;
+  --paper-deep:#E8E6DD;
+  --ink:#26241F;
+  --ink-soft:#5B574E;
+  --rule:#D5D2C8;
+  --red:#A03B28;
+  --red-deep:#7E2E1F;
+  --night:#191816;
+  --serif:"Noto Serif SC","Source Han Serif SC","Songti SC","STSong","SimSun",serif;
+  --sans:"Noto Sans SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"Courier Prime","Courier New",ui-monospace,Consolas,monospace;
+  --spine-w:76px;
+  --gap-page:clamp(72px,12vh,128px);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16.5px;
+  line-height:1.9;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+::selection{background:var(--red);color:var(--paper)}
+a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--red);text-decoration-color:var(--red)}
+:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+img{display:block;max-width:100%}
+::-webkit-scrollbar{width:11px}
+::-webkit-scrollbar-track{background:var(--paper-deep)}
+::-webkit-scrollbar-thumb{background:var(--ink-soft);border:3px solid var(--paper-deep);border-radius:0}
+::-webkit-scrollbar-thumb:hover{background:var(--ink)}
+
+/* ---------- 书口侧脊 ---------- */
+.spine{
+  position:fixed;top:0;left:0;bottom:0;width:var(--spine-w);z-index:40;
+  background:var(--paper);
+  border-right:1px solid var(--rule);
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:28px 0 24px;
+}
+.spine::after{
+  content:"";position:absolute;top:0;bottom:0;right:-14px;width:14px;pointer-events:none;
+  background:linear-gradient(90deg,rgba(38,36,31,.07),transparent);
+}
+.spine-brand{display:flex;flex-direction:column;align-items:center;gap:14px}
+.spine-title{
+  writing-mode:vertical-rl;text-orientation:upright;
+  font-family:var(--serif);font-weight:900;font-size:21px;letter-spacing:.35em;
+}
+.spine-rule{width:1px;height:34px;background:var(--ink)}
+.spine-nav{display:flex;flex-direction:column;align-items:center;gap:26px}
+.spine-nav a{
+  writing-mode:vertical-rl;text-orientation:upright;
+  font-family:var(--serif);font-size:14.5px;letter-spacing:.5em;
+  text-decoration:none;color:var(--ink-soft);
+}
+.spine-nav a:hover,.spine-nav a[aria-current]{color:var(--red)}
+.spine-nav a[aria-current]{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
+.seal{
+  width:34px;height:34px;background:var(--red);color:var(--paper);
+  display:grid;place-items:center;
+  font-family:var(--serif);font-weight:900;font-size:15px;
+  box-shadow:0 1px 3px rgba(38,36,31,.25);
+}
+
+/* ---------- 版面骨架 ---------- */
+.page{margin-left:var(--spine-w);position:relative}
+.wrap{max-width:1280px;margin:0 auto;padding:0 clamp(20px,4vw,56px)}
+.mono{font-family:var(--mono);font-size:11.5px;letter-spacing:.09em;color:var(--ink-soft)}
+.hairline{border:0;border-top:1px solid var(--rule);margin:0}
+
+section{padding-top:var(--gap-page)}
+
+/* ---------- 开场跨页 ---------- */
+.opening{
+  min-height:var(--open-min,100vh);display:grid;grid-template-columns:minmax(280px,1fr) 2fr;
+  gap:clamp(32px,5vw,72px);align-items:stretch;
+  padding-top:clamp(48px,9vh,96px);padding-bottom:56px;
+}
+.colophon-left{display:flex;flex-direction:column;justify-content:flex-end;gap:36px;padding-bottom:8px}
+.bookname{display:flex;align-items:flex-start;gap:22px}
+.bookname .vert{
+  writing-mode:vertical-rl;text-orientation:upright;
+  font-family:var(--serif);font-weight:900;font-size:clamp(56px,7vw,84px);
+  line-height:1.18;letter-spacing:.12em;color:var(--ink);
+}
+.bookname .latin{
+  padding-top:10px;font-family:var(--mono);font-size:12px;letter-spacing:.22em;
+  color:var(--ink-soft);writing-mode:vertical-rl;
+}
+.intro{max-width:34ch;font-size:16.5px;color:var(--ink)}
+.intro em{font-style:normal;color:var(--red);font-weight:500}
+.index-note{border-top:1px solid var(--rule);padding-top:16px;display:grid;gap:6px}
+.plate{position:relative;cursor:zoom-in}
+.plate > img{width:100%;height:100%;object-fit:cover}
+.plate .stamp{
+  position:absolute;top:18px;right:18px;width:44px;height:44px;border-radius:50%;
+  border:1.5px solid var(--red);color:var(--red);background:rgba(242,241,236,.92);
+  display:grid;place-items:center;font-family:var(--serif);font-size:11px;font-weight:600;
+  letter-spacing:.05em;line-height:1.3;text-align:center;
+}
+.shotcard{
+  position:absolute;right:0;bottom:0;background:var(--paper);
+  border-top:1px solid var(--rule);border-left:1px solid var(--rule);
+  padding:10px 16px 11px;max-width:min(70%,420px);
+}
+.shotcard .t{font-family:var(--serif);font-size:14px;font-weight:600;letter-spacing:.06em}
+.shotcard .m{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-soft);margin-top:3px}
+.shotcard .m .demo{color:var(--red)}
+
+/* ---------- 系列跨页 ---------- */
+.series-head{display:flex;align-items:baseline;gap:18px;margin-bottom:28px}
+.series-no{font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--red)}
+.series-title{font-family:var(--serif);font-weight:900;font-size:clamp(26px,3.2vw,36px);letter-spacing:.06em}
+.series-sub{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:var(--ink-soft);margin-left:auto}
+.spread-plate{
+  position:relative;overflow:hidden;cursor:zoom-in;
+  box-shadow:0 10px 28px -18px rgba(38,36,31,.45);
+}
+.spread-plate img{width:100%;height:auto;transition:transform .8s cubic-bezier(.16,1,.3,1)}
+.spread-plate:hover img{transform:scale(1.012)}
+.frame-no{
+  position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.12em;color:var(--paper);background:rgba(25,24,22,.84);padding:3px 9px;
+}
+.duo{display:grid;grid-template-columns:5fr 7fr;gap:clamp(20px,3vw,40px);margin-top:clamp(20px,3vw,40px);align-items:start}
+.duo.rev{grid-template-columns:7fr 5fr}
+.duo .tall{cursor:zoom-in;position:relative;box-shadow:0 10px 28px -18px rgba(38,36,31,.45)}
+.duo .tall img{width:100%;height:100%;object-fit:cover}
+.note-margin{
+  margin-top:26px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start;
+}
+.note-margin p{max-width:62ch;color:var(--ink-soft);font-size:15.5px}
+.note-margin p b{color:var(--ink);font-weight:500}
+
+/* ---------- 目次 ---------- */
+.toc-list{list-style:none;display:grid;gap:0;border-top:1px solid var(--ink)}
+.toc-list li a{
+  display:flex;align-items:baseline;gap:14px;text-decoration:none;color:var(--ink);
+  padding:20px 4px;border-bottom:1px solid var(--rule);
+}
+.toc-list li a:hover{background:var(--paper-deep)}
+.toc-list .no{font-family:var(--mono);font-size:12px;color:var(--red);letter-spacing:.12em;min-width:52px}
+.toc-list .name{font-family:var(--serif);font-weight:600;font-size:19px;letter-spacing:.05em;white-space:nowrap}
+.toc-list .dots{flex:1;border-bottom:1px dotted var(--ink-soft);transform:translateY(-4px)}
+.toc-list .meta{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);white-space:nowrap}
+
+/* ---------- 随笔 ---------- */
+.essay{display:grid;grid-template-columns:minmax(0,7fr) minmax(180px,3fr);gap:clamp(28px,5vw,72px)}
+.essay .body{max-width:66ch;font-size:17px}
+.essay .body p+p{margin-top:1.4em}
+.essay .body .dropcap::first-letter{
+  font-family:var(--serif);font-weight:900;font-size:2.9em;float:left;line-height:1;
+  padding:.06em .12em 0 0;color:var(--red);
+}
+.marginalia{border-top:1px solid var(--red);padding-top:14px;display:grid;gap:18px;align-content:start;font-family:var(--mono);font-size:11.5px;line-height:1.8;color:var(--ink-soft)}
+.marginalia .mark{color:var(--red);font-weight:700}
+.essay-more{margin-top:26px}
+
+/* ---------- 版权页 / 关于 ---------- */
+.about{display:grid;grid-template-columns:1fr 1fr;gap:clamp(32px,6vw,88px)}
+.about h3{font-family:var(--serif);font-weight:900;font-size:22px;letter-spacing:.08em;margin-bottom:16px}
+.about p{max-width:44ch}
+.about dl{display:grid;grid-template-columns:auto 1fr;gap:8px 22px;font-family:var(--mono);font-size:12px;line-height:1.9}
+.about dt{color:var(--ink-soft);letter-spacing:.08em}
+.about dd{color:var(--ink)}
+.about .links{margin-top:26px;display:flex;gap:22px;flex-wrap:wrap}
+
+/* ---------- 页脚 ---------- */
+footer{
+  margin-top:var(--gap-page);border-top:1px solid var(--ink);
+  padding:22px 0 34px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+}
+
+/* ---------- 灯箱 ---------- */
+.lightbox{
+  position:fixed;inset:0;z-index:80;background:var(--night);
+  display:grid;grid-template-rows:1fr auto;
+  opacity:0;visibility:hidden;transition:opacity .35s ease,visibility .35s;
+}
+.lightbox[open="true"]{opacity:1;visibility:visible}
+.lb-stage{position:relative;display:grid;place-items:center;padding:clamp(16px,4vh,40px) clamp(16px,5vw,64px) 0;min-height:0}
+.lb-stage img{max-width:100%;max-height:calc(100vh - 190px);object-fit:contain;box-shadow:0 24px 60px -30px rgba(0,0,0,.9)}
+.lb-btn{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:52px;height:64px;background:transparent;border:1px solid rgba(242,241,236,.25);color:var(--paper);
+  font-family:var(--mono);font-size:20px;cursor:pointer;transition:border-color .2s,color .2s;
+}
+.lb-btn:hover{border-color:var(--red);color:var(--red)}
+.lb-prev{left:clamp(8px,2vw,28px)}
+.lb-next{right:clamp(8px,2vw,28px)}
+.lb-close{
+  position:absolute;top:18px;right:clamp(8px,2vw,28px);width:auto;height:auto;transform:none;
+  padding:8px 14px;border:1px solid rgba(242,241,236,.25);font-size:12px;letter-spacing:.15em;
+}
+.lb-sheet{
+  display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  margin:18px clamp(16px,5vw,64px) 26px;padding-top:14px;border-top:1px solid rgba(242,241,236,.25);
+  color:var(--paper);
+}
+.lb-sheet .l{font-family:var(--serif);font-size:16px;font-weight:600;letter-spacing:.06em}
+.lb-sheet .r{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:#B9B5AA}
+.lb-sheet .r .demo{color:#D98A78}
+
+/* ---------- 入场动效（一次编排，不散落） ---------- */
+@media (prefers-reduced-motion:no-preference){
+  .js .rise{opacity:0;transform:translateY(26px);clip-path:inset(0 0 12% 0)}
+  .js .rise.in{
+    opacity:1;transform:none;clip-path:inset(0 0 0 0);
+    transition:opacity .9s cubic-bezier(.16,1,.3,1),transform .9s cubic-bezier(.16,1,.3,1),clip-path .9s cubic-bezier(.16,1,.3,1);
+  }
+  ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+  ::view-transition-old(plate),::view-transition-new(plate){animation-duration:.42s;animation-timing-function:cubic-bezier(.16,1,.3,1)}
+  .lightbox[open="true"] .lb-sheet{animation:sheet-in .55s cubic-bezier(.16,1,.3,1) both}
+  @keyframes sheet-in{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+}
+html.static .rise{opacity:1;transform:none;clip-path:none;transition:none}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width:900px){
+  :root{--spine-w:0px}
+  .spine{
+    position:sticky;flex-direction:row;width:100%;height:56px;
+    top:0;padding:0 18px;justify-content:space-between;align-items:center;
+    border-right:0;border-bottom:1px solid var(--rule);
+  }
+  .spine::after{display:none}
+  .spine-brand{flex-direction:row;align-items:center;gap:10px}
+  .spine-title{writing-mode:horizontal-tb;font-size:17px;letter-spacing:.3em}
+  .spine-rule{width:26px;height:1px}
+  .spine-nav{flex-direction:row;gap:20px}
+  .spine-nav a{writing-mode:horizontal-tb;font-size:13.5px;letter-spacing:.25em}
+  .seal{width:28px;height:28px;font-size:13px}
+  .opening{min-height:0;grid-template-columns:1fr;gap:36px;padding-top:40px}
+  .colophon-left{justify-content:flex-start}
+  .bookname .vert{writing-mode:horizontal-tb;font-size:clamp(40px,13vw,52px);letter-spacing:.18em;white-space:nowrap}
+  .bookname .latin{writing-mode:horizontal-tb;padding-top:0;align-self:flex-end}
+  .bookname{align-items:baseline}
+  .duo{grid-template-columns:1fr}
+  .duo.rev{grid-template-columns:1fr}
+  .duo .tall{aspect-ratio:auto}
+  .essay{grid-template-columns:1fr}
+  .marginalia{order:2}
+  .about{grid-template-columns:1fr}
+  .lb-btn{width:44px;height:56px}
+  .lb-stage img{max-height:calc(100vh - 230px)}
+}
+</style>
+</head>
+<body class="js">
+
+<!-- 书口侧脊 -->
+<header class="spine">
+  <div class="spine-brand">
+    <span class="spine-title">柚影集</span>
+    <span class="spine-rule" aria-hidden="true"></span>
+  </div>
+  <nav class="spine-nav" aria-label="站内导航">
+    <a href="#opening" aria-current="page">开卷</a>
+    <a href="#series">系列</a>
+    <a href="#essays">随笔</a>
+    <a href="#about">版权页</a>
+  </nav>
+  <span class="seal" aria-hidden="true">柚</span>
+</header>
+
+<main class="page">
+
+  <!-- 开场跨页 -->
+  <div class="wrap">
+    <section class="opening" id="opening" aria-label="开卷">
+      <div class="colophon-left rise">
+        <div class="bookname">
+          <h1 class="vert">柚·街影</h1>
+          <span class="latin" aria-label="Justyou Photography">JUSTYOU · FIELD&nbsp;PHOTOS</span>
+        </div>
+        <p class="intro">一个人的街拍档案。镜头跟着巷子走：<em>红灯笼、幌子、伞面下的集市</em>，和岭南县城被日光晒软的午后。按系列成册，不定期增补。</p>
+        <div class="index-note">
+          <span class="mono">本期收录 · No.01–No.02 · 共 5 帧</span>
+          <span class="mono">摄于 2026.09 · 广东顺德大良 / 逢简</span>
+          <span class="mono">机 · Panasonic Lumix GX85</span>
+        </div>
+      </div>
+      <figure class="plate rise" data-frame="0">
+        <img src="img/P1230857.jpg" width="1922" height="2560" alt="逢简旧巷：撑蓝格伞的白衣行人，两侧红幡高悬" fetchpriority="high" decoding="async">
+        <span class="stamp" aria-hidden="true">精选<br>帧</span>
+        <figcaption class="shotcard">
+          <div class="t">逢简 · 伞与幡</div>
+          <div class="m">GX85 · 2026.09.17 · f/5.6 <span class="demo" title="示例参数，正式站点由导入脚本从 EXIF 自动写入">※示例</span> · 1/500s · ISO200</div>
+        </figcaption>
+      </figure>
+    </section>
+  </div>
+
+  <!-- 系列 No.01 -->
+  <div class="wrap">
+    <section id="series" aria-label="系列 No.01 逢简市集">
+      <div class="series-head rise">
+        <span class="series-no">No.01</span>
+        <h2 class="series-title">逢简市集</h2>
+        <span class="series-sub">3 FRAMES · 2026.09.17</span>
+      </div>
+      <figure class="spread-plate rise" data-frame="1">
+        <img src="img/P1230888.jpg" width="2560" height="1922" alt="灯笼街：红黄灯笼悬满街口，行人撑伞而行" loading="lazy" decoding="async">
+        <span class="frame-no">01 / 03</span>
+      </figure>
+      <div class="duo">
+        <figure class="tall rise" data-frame="0">
+          <img src="img/P1230857.jpg" width="1922" height="2560" alt="逢简旧巷：撑蓝格伞的白衣行人" loading="lazy" decoding="async">
+          <span class="frame-no" style="position:absolute;left:14px;bottom:12px">02 / 03</span>
+        </figure>
+        <div>
+          <figure class="spread-plate rise" data-frame="2">
+            <img src="img/P1230876.jpg" width="2560" height="1922" alt="店内视角：玻璃窗外糖葫芦与橙色遮阳伞" loading="lazy" decoding="async">
+            <span class="frame-no">03 / 03</span>
+          </figure>
+          <div class="note-margin rise">
+            <p>正午的逢简，摊主把糖葫芦插成一小束光。<b>玻璃窗把整条街压成了一张明信片</b>——我坐在店里等那把粉伞走过去，等到了一帧，等不到的两帧也值得。</p>
+            <span class="mono">手记 · 示例文案</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 系列 No.02 -->
+  <div class="wrap">
+    <section aria-label="系列 No.02 幌子与荫">
+      <div class="series-head rise">
+        <span class="series-no">No.02</span>
+        <h2 class="series-title">幌子与荫</h2>
+        <span class="series-sub">2 FRAMES · 2026.09.17</span>
+      </div>
+      <figure class="spread-plate rise" data-frame="3">
+        <img src="img/P1230869.jpg" width="2560" height="1760" alt="骑楼商铺：红黄布幡与灯笼沿街排开" loading="lazy" decoding="async">
+        <span class="frame-no">01 / 02</span>
+      </figure>
+      <div class="duo rev">
+        <figure class="tall rise" data-frame="4" style="aspect-ratio:4/3">
+          <img src="img/P1230861.jpg" width="2560" height="1922" alt="街口小铺：红遮阳伞下童车与挂饰" loading="lazy" decoding="async">
+          <span class="frame-no" style="position:absolute;left:14px;bottom:12px">02 / 02</span>
+        </figure>
+        <div class="note-margin rise" style="margin-top:0;grid-template-columns:1fr">
+          <p>县城商业街把招牌举到天上：<b>米黄的幡、朱红的字、成串的灯笼</b>。遮阳伞撑开一小块阴凉，也撑起一整个摊位的生计。这一组先收两帧，等雨季回来补。</p>
+          <span class="mono">手记 · 示例文案 · 草稿状态</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 目次 -->
+  <div class="wrap">
+    <section aria-label="目次">
+      <div class="series-head rise">
+        <span class="series-no">INDEX</span>
+        <h2 class="series-title">目次</h2>
+        <span class="series-sub">全部系列 · 按册号</span>
+      </div>
+      <ol class="toc-list rise">
+        <li><a href="#series"><span class="no">No.01</span><span class="name">逢简市集</span><span class="dots" aria-hidden="true"></span><span class="meta">3 帧 · 2026.09.17</span></a></li>
+        <li><a href="#"><span class="no">No.02</span><span class="name">幌子与荫</span><span class="dots" aria-hidden="true"></span><span class="meta">2 帧 · 草稿</span></a></li>
+        <li><a href="#"><span class="no">No.03</span><span class="name">（下一册 · 雨季返场）</span><span class="dots" aria-hidden="true"></span><span class="meta">占位</span></a></li>
+      </ol>
+    </section>
+  </div>
+
+  <!-- 随笔 -->
+  <div class="wrap">
+    <section id="essays" aria-label="随笔">
+      <div class="series-head rise">
+        <span class="series-no">ESSAYS</span>
+        <h2 class="series-title">随笔</h2>
+        <span class="series-sub">文字为主 · 插图为辅</span>
+      </div>
+      <article class="essay rise">
+        <div class="body">
+          <p class="dropcap">拍街的人都知道，最好的光线出现在你准备收工的那十分钟。那天在大良，我合上包、喝完最后一口柠檬茶，玻璃街对面的伞忽然全撑开了——红、橙、蓝格，一层压着一层，像谁把整个市集抖开晾在太阳底下。</p>
+          <p>我换了个机位，从店里往外拍。玻璃把两层世界叠在一起：屋内的红塑料凳、屋外的糖葫芦、以及更远处收伞的人。这一帧不需要解释，看的人自己会走进去。</p>
+          <a class="essay-more mono" href="#">读下去 · 全部随笔 →</a>
+        </div>
+        <aside class="marginalia" aria-label="页边批注">
+          <p><span class="mark">※</span> 本页文案为视觉样张示例，正式内容在 /admin 后台撰写。</p>
+          <p><span class="mark">※</span> 拍摄参数由导入脚本读取 EXIF 自动写入，无需手工维护。</p>
+          <p><span class="mark">※</span> 随笔按时间倒序排列，长文自动分页渲染。</p>
+        </aside>
+      </article>
+    </section>
+  </div>
+
+  <!-- 关于 / 版权页 -->
+  <div class="wrap">
+    <section id="about" aria-label="关于与版权页">
+      <div class="series-head rise">
+        <span class="series-no">COLOPHON</span>
+        <h2 class="series-title">版权页</h2>
+        <span class="series-sub">关于这个影集</span>
+      </div>
+      <div class="about rise">
+        <div>
+          <h3>关于柚</h3>
+          <p>拿相机的人，白天上班，周末进巷子。这里只放自己满意的帧，不设更新承诺；两年后回看，希望它还是一本完整的书。（示例简介，待作者本人校订）</p>
+          <div class="links">
+            <a href="#" class="mono">Instagram ↗（示例链接）</a>
+            <a href="#" class="mono">邮箱 ↗（示例链接）</a>
+          </div>
+        </div>
+        <div>
+          <h3>本书制作信息</h3>
+          <dl>
+            <dt>相机</dt><dd>Panasonic Lumix GX85</dd>
+            <dt>后期</dt><dd>Adobe Photoshop</dd>
+            <dt>印制</dt><dd>静态站点 · Cloudflare Pages</dd>
+            <dt>版式</dt><dd>思源宋体 / 思源黑体 / Courier Prime</dd>
+            <dt>收录</dt><dd>2026.09 起 · 顺德大良 / 逢简</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <footer>
+      <span class="mono">柚 · JUSTYOU —— 视觉样张 · 文案与参数示例待校订</span>
+      <span class="mono">© 2026 柚</span>
+    </footer>
+  </div>
+</main>
+
+<!-- 灯箱 -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="照片灯箱" open="false">
+  <div class="lb-stage">
+    <img id="lb-img" alt="">
+    <button class="lb-btn lb-prev" id="lb-prev" aria-label="上一帧">←</button>
+    <button class="lb-btn lb-next" id="lb-next" aria-label="下一帧">→</button>
+    <button class="lb-btn lb-close" id="lb-close" aria-label="关闭灯箱（Esc）">合上 ✕</button>
+  </div>
+  <div class="lb-sheet" id="lb-sheet" aria-live="polite">
+    <span class="l" id="lb-title"></span>
+    <span class="r" id="lb-meta"></span>
+  </div>
+</div>
+
+<script>
+if(location.search.includes("static"))document.documentElement.classList.add("static");
+const FRAMES=[
+  {src:"img/P1230857.jpg",alt:"逢简旧巷：撑蓝格伞的白衣行人，两侧红幡高悬",t:"逢简 · 伞与幡",m:"GX85 · 2026.09.17 · f/5.6 ※示例 · 1/500s · ISO200 · 帧 02/03"},
+  {src:"img/P1230888.jpg",alt:"灯笼街：红黄灯笼悬满街口，行人撑伞而行",t:"逢简 · 灯笼街",m:"GX85 · 2026.09.17 · f/8 ※示例 · 1/640s · ISO200 · 帧 01/03"},
+  {src:"img/P1230876.jpg",alt:"店内视角：玻璃窗外糖葫芦与橙色遮阳伞",t:"逢简 · 窗内糖葫芦",m:"GX85 · 2026.09.17 · f/4 ※示例 · 1/250s · ISO400 · 帧 03/03"},
+  {src:"img/P1230869.jpg",alt:"骑楼商铺：红黄布幡与灯笼沿街排开",t:"幌子与荫 · 布幡街",m:"GX85 · 2026.09.17 · f/5.6 ※示例 · 1/500s · ISO200 · 帧 01/02"},
+  {src:"img/P1230861.jpg",alt:"街口小铺：红遮阳伞下童车与挂饰",t:"幌子与荫 · 伞下小铺",m:"GX85 · 2026.09.17 · f/5.6 ※示例 · 1/400s · ISO200 · 帧 02/02"}
+];
+let cur=0,lastTrigger=null;
+const lb=document.getElementById("lightbox"),lbImg=document.getElementById("lb-img"),
+      lbT=document.getElementById("lb-title"),lbM=document.getElementById("lb-meta");
+const reduce=()=>matchMedia("(prefers-reduced-motion: reduce)").matches;
+function setInert(on){document.querySelector(".spine").inert=on;document.querySelector(".page").inert=on;}
+function render(i){cur=(i+FRAMES.length)%FRAMES.length;const f=FRAMES[cur];
+  lbImg.src=f.src;lbImg.alt=f.alt;lbT.textContent=f.t;lbM.innerHTML=f.m.replace("※示例",'<span class="demo">※示例</span>');}
+function open(i,trigger){
+  lastTrigger=trigger||null;render(i);
+  const show=()=>{lb.setAttribute("open","true");document.body.style.overflow="hidden";setInert(true);document.getElementById("lb-close").focus();};
+  if(trigger&&document.startViewTransition&&!reduce()){
+    trigger.style.viewTransitionName="plate";
+    const vt=document.startViewTransition(()=>{show();trigger.style.viewTransitionName="";lbImg.style.viewTransitionName="plate";});
+    vt.finished.finally(()=>{trigger.style.viewTransitionName="";});
+  }else show();
+}
+function close(){
+  const hide=()=>{lb.setAttribute("open","false");document.body.style.overflow="";setInert(false);lastTrigger&&lastTrigger.focus();};
+  if(document.startViewTransition&&!reduce()&&lastTrigger){
+    const t=lastTrigger;
+    const vt=document.startViewTransition(()=>{hide();lbImg.style.viewTransitionName="";t.style.viewTransitionName="plate";});
+    vt.finished.finally(()=>{t.style.viewTransitionName="";});
+  }else hide();
+}
+document.querySelectorAll("[data-frame]").forEach(el=>{
+  el.setAttribute("tabindex","0");el.setAttribute("role","button");
+  el.addEventListener("click",()=>open(+el.dataset.frame,el.querySelector("img")));
+  el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open(+el.dataset.frame,el.querySelector("img"));}});
+});
+document.getElementById("lb-prev").onclick=()=>render(cur-1);
+document.getElementById("lb-next").onclick=()=>render(cur+1);
+document.getElementById("lb-close").onclick=close;
+lb.addEventListener("click",e=>{if(e.target===lb||e.target.classList.contains("lb-stage"))close();});
+document.addEventListener("keydown",e=>{
+  if(lb.getAttribute("open")!=="true")return;
+  if(e.key==="Escape")close();if(e.key==="ArrowLeft")render(cur-1);if(e.key==="ArrowRight")render(cur+1);
+});
+let tx=null;
+lb.addEventListener("touchstart",e=>tx=e.changedTouches[0].clientX,{passive:true});
+lb.addEventListener("touchend",e=>{if(tx===null)return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>48)render(cur+(dx<0?1:-1));tx=null;},{passive:true});
+
+/* 入场：一次编排，随滚动分批 */
+const io=new IntersectionObserver(es=>es.forEach(en=>{
+  if(en.isIntersecting){
+    const sibs=[...en.target.parentElement.children].filter(c=>c.classList.contains("rise"));
+    en.target.style.transitionDelay=Math.min(sibs.indexOf(en.target)*90,270)+"ms";
+    en.target.classList.add("in");io.unobserve(en.target);
+  }
+}),{threshold:.12});
+document.querySelectorAll(".rise").forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

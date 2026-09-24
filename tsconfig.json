@@ -1,0 +1,10 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "include": [".astro/types.d.ts", "**/*"],
+  "exclude": ["dist", "node_modules", "coverage", "test-results", "playwright-report"],
+  "compilerOptions": {
+    "allowJs": true,
+    "strictNullChecks": true,
+    "types": ["astro/client"]
+  }
+}

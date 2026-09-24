@@ -1,0 +1,33 @@
+{
+  "name": "grphyblog",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Justyou / 柚 —— 个人摄影博客（Astro 纯静态）",
+  "engines": {
+    "node": "24"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "import": "node scripts/import-photos.mjs",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "astro": "^7.3.4",
+    "exifr": "^7.1.3",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@astrojs/compiler": "^4.0.0",
+    "@playwright/test": "^1.63.0",
+    "@vitest/coverage-v8": "^5.0.1",
+    "vitest": "^5.0.1"
+  }
+}
