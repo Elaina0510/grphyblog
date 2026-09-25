@@ -32,7 +32,7 @@ interface CmsField {
   widget?: string;
   default?: unknown;
   date_format?: string;
-  valueType?: string;
+  value_type?: string;
   [key: string]: unknown;
 }
 
@@ -110,7 +110,7 @@ function sampleValueFor(field: CmsField): unknown {
       // date_format: YYYY-MM-DD 时 Decap 写成裸日期串，js-yaml/Astro 会解析成 Date
       return new Date(Date.UTC(2026, 8, 20)).toISOString().slice(0, 10);
     case 'number':
-      return field.valueType === 'int' ? 2 : 2.5;
+      return field.value_type === 'int' ? 2 : 2.5;
     case 'boolean':
       return field.default === undefined ? true : !field.default;
     case 'list':
@@ -277,7 +277,7 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     expect(draft?.widget).toBe('boolean');
     expect(draft?.default).toBe(false);
     expect(order?.widget).toBe('number');
-    expect(order?.valueType).toBe('int');
+    expect(order?.value_type).toBe('int');
     expect(postsHasNoOrder(collectionByName('posts'))).toBe(true);
   });
 
