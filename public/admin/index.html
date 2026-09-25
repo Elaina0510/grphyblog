@@ -3,152 +3,38 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- 后台不给搜索引擎收录（decap-cms 任务 1）。再补一道：站点根 robots 想加也随时可加。 -->
+    <!-- 后台不给搜索引擎收录（decap-cms 任务 1 的口径，换引擎后不变）。 -->
     <meta name="robots" content="noindex, nofollow" />
     <meta name="googlebot" content="noindex, nofollow" />
     <title>内容后台 · 柚 Justyou</title>
   </head>
   <body>
     <!--
-      Decap CMS 走 CDN 引入，**不做 npm 依赖**（构建不需要联网，浏览器加载 CDN）。
-      版本已锁定为 3.16.3（不用 /latest，也不用 ^ 区间）：CMS 是纯前端脚本，
-      飘个版本就可能把后台渲染搞坏，锁死更安全。升级 = 手动改这一行 + 线上登录验一次。
-      停维备案（design §3）：若 Decap 停维，换 Sveltia CMS 只改本目录（本文件的 script 标签
-      + config.yml 个别键名）；内容仓库与 Astro 构建不受波及。详见 config.yml 顶部注释。
+      Sveltia CMS（后台引擎）。为什么换掉 Decap：Decap 3.x 的 GitHub 后端只会走 Netlify 的
+      OAuth 代理（api.netlify.com/auth），本站在 Cloudflare Pages 上，代理回 404，登录必挂
+      （auth_type/client_id 会被整个忽略——已读源码 + 无头浏览器实测确认）。
+      Sveltia 读同一份 config.yml / 同一套内容仓库，支持粘贴 GitHub Access Token 直登，
+      不需要任何代理或自建服务器。
+
+      三个刻意的写法（都出自 Sveltia 官方 Start Guide，别顺手"优化"）：
+        1) 不加 type="module"：当前发行版不是 ES module，加了会出未定义行为；
+        2) 不加 <link rel="stylesheet">：样式全部打进 JS，没有独立 CSS 文件；
+        3) 版本锁死 0.221.0（不用 latest）：升级 = 手动改这行 + 线上登录验一次。
+
+      加载后自动初始化，配置从本目录的 config.yml 读；不要在这里再调任何 init API。
     -->
-    <script src="https://cdn.jsdelivr.net/npm/decap-cms@3.16.3/dist/decap-cms.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@sveltia/cms@0.221.0/dist/sveltia-cms.js"></script>
     <noscript>内容后台需要 JavaScript：请在支持 JS 的浏览器里打开 /admin/。</noscript>
 
     <!--
-      Editor Preview（decap-cms 任务 8）
-      ------------------------------------------------------------------
-      CMS 运行时是上面那个 CDN 包，**import 不到我们 Astro 侧的 TS 工具**（src/utils/imageUrl.ts、
-      contentImages.ts），所以「图片 URL 规则」在下面重写了一份最小实现 resolvePreviewUrl()。
-
-      ⚠️ 同步约定：**改 src/utils/imageUrl.ts 的基准规则（含 PUBLIC_IMAGE_BASE 口径）时，
-        必须同步改这里的 resolvePreviewUrl() 与 public/admin/config.yml 的 public_folder。**
-        两处文件的头部都有互指注释；比对方法是「后台预览图 vs 线上页面图」同一张图对一遍。
-
-      与 imageUrl.ts 一致的三条规则：
-        1) 已是 http(s) 绝对地址 → 原样返回，绝不加 base；
-        2) data: / blob: 内联串 → 原样返回；
-        3) 其余按 base + '/' + path 拼接，并合并多余斜杠（base 默认同源根 '/'，
-           与 config.yml 的 public_folder 同值）。
-      差别（已知且刻意）：Astro 构建把 src/content 里的图交给 Vite 资源管线，线上真实 URL 带
-      hash（/_astro/xxx.webp），后台拿不到那份映射，故预览图在**线上**多半显示不出来；
-      在**本地**（astro dev + local_backend）会退到第二条候选
-      /src/content/<集合>/<条目>/<cover> —— Vite 开发服务器能直接命中，预览可看到真图。
-      这是 CMS 预览的固有限制，不影响保存结果的 frontmatter（cover 存的仍是相对路径原文）。
+      🖼 预览基准的同步约定（原 decap-cms 任务 8 的口径）：
+      前台图片 URL 规则唯一出口是 src/utils/imageUrl.ts；Sveltia 的编辑器预览由引擎自己
+      按 config.yml 的 public_folder 拼 URL（不再需要我们手写镜像实现——Decap 时代那份
+      resolvePreviewUrl()/registerPreviewTemplate 已随引擎一起退役）。
+      ➜ 改 imageUrl.ts 的基准规则（含 PUBLIC_IMAGE_BASE 口径）时，必须同步改 config.yml
+        的 public_folder；imageUrl.ts 头部有互指注释。
+      注意：封面字段是 string（相对条目路径），预览多半显示不出来，线上同理——
+      这是「照片只能出自 npm run import、后台只管文字」的既定取舍，不是故障。
     -->
-    <script>
-      (function () {
-        'use strict';
-
-        var cms = window.DecapCms || window.CMS;
-        if (!cms) return;
-
-        /** 与 config.yml 的 public_folder 同值；改一处必须改两处。 */
-        var PUBLIC_FOLDER = '/';
-
-        var ABSOLUTE_URL = /^https?:\/\//i;
-        var INLINE_URL = /^(data|blob):/i;
-
-        /** imageUrl() 的最小镜像实现（规则见上面注释第 1~3 条）。 */
-        function resolvePreviewUrl(path, base) {
-          if (typeof path !== 'string' || path.length === 0) return path;
-          if (ABSOLUTE_URL.test(path) || INLINE_URL.test(path)) return path;
-          var root = (base === undefined ? PUBLIC_FOLDER : base).replace(/\/+$/, '');
-          var clean = path.replace(/^\/+/, '');
-          return root === '' ? '/' + clean : root + '/' + clean;
-        }
-
-        /** 图片加载失败时按候选列表退一档（线上带 hash 的资源后台无法预知，退到 dev 路径）。 */
-        function onImageError(event) {
-          var el = event.target || this;
-          var rest = String(el.getAttribute('data-fallbacks') || '').split('|');
-          var next = rest.filter(Boolean);
-          if (next.length > 0) {
-            el.setAttribute('data-fallbacks', next.slice(1).join('|'));
-            el.src = next[0];
-          }
-        }
-
-        function previewImage(entryDir, cover) {
-          if (!cover) return null;
-          var candidates = [
-            resolvePreviewUrl(cover),
-            '/src/content/' + entryDir + '/' + String(cover).replace(/^\/+/, ''),
-          ];
-          return h(
-            'img',
-            {
-              src: candidates[0],
-              alt: '',
-              'data-fallbacks': candidates.slice(1).join('|'),
-              onError: onImageError,
-              style: { display: 'block', maxWidth: '100%', height: 'auto', margin: '0 0 1rem' },
-            },
-            null,
-          );
-        }
-
-        /**
-         * 系列 / 随笔共用的预览模板：只展示「前台真会用到的东西」——
-         * 封面（按 imageUrl 口径解析）+ 标题 + 日期/标签/排序 + Markdown 正文。
-         * frontmatter 由 Decap 按 fields 生成，这里**不写任何字段**，只负责渲染。
-         */
-        function makeEntryTemplate(collectionName) {
-          return function (props) {
-            try {
-              var data = props.entry.get('data') || {};
-              var get = function (key) {
-                return typeof data.get === 'function' ? data.get(key) : data[key];
-              };
-              // 系列条目目录 = series/<name>；随笔 = posts/<文件名去扩展名>
-              var slug = (props.entry.get && props.entry.get('slug')) || '';
-              var entryDir =
-                collectionName + '/' + String(slug).replace(/\.md$/, '').replace(/\/index$/, '');
-              var meta = [get('date'), (get('tags') || []).join(' / ')];
-              if (collectionName === 'series') meta.push('order ' + get('order'));
-              if (get('draft')) meta.push('草稿（未发布）');
-
-              return h(
-                'article',
-                { style: { maxWidth: '42rem', margin: '0 auto', padding: '1.5rem', lineHeight: 1.7 } },
-                previewImage(entryDir, get('cover')),
-                h('h1', null, get('title') || '（无标题）'),
-                h(
-                  'p',
-                  { style: { opacity: 0.7, fontSize: '0.875rem' } },
-                  meta.filter(function (m) { return m !== undefined && m !== null && m !== ''; }).join(' · '),
-                ),
-                // 正文（手记 / 随笔内容）交给各自 widget 的预览渲染，避免在这里重写 Markdown 规则
-                props.widgetFor ? props.widgetFor('body') : h('div', null, props.entry.get('body')),
-              );
-            } catch (err) {
-              // 预览坏掉绝不能挡住编辑与保存：退回 Decap 默认预览
-              return h('div', null, props.widgetFor ? props.widgetFor('title') : null);
-            }
-          };
-        }
-
-        var h = cms.h || (window.React && window.React.createElement);
-
-        if (h && typeof cms.registerPreviewTemplate === 'function') {
-          try {
-            cms.registerPreviewTemplate('series', makeEntryTemplate('series'));
-            cms.registerPreviewTemplate('posts', makeEntryTemplate('posts'));
-            // 预览里想再套站内样式时在此加：cms.registerPreviewStyle('/_astro/xxx.css');
-            // （构建后 CSS 文件名带 hash，静态站后台拿不到稳定路径，故默认不注入。）
-          } catch (err) {
-            /* 注册失败就用 Decap 默认预览，不影响文字编辑与保存 */
-          }
-        }
-
-        // 自包含的 decap-cms.js 加载时已自动读取同目录 config.yml 完成初始化，
-        // 这里不再手动 cms.init()（避免二次初始化）。上面的 registerPreviewTemplate 为
-        // best-effort：在自动初始化之后注册，可能只影响后续打开的条目预览，失败也不影响编辑与保存。
-      })();
-    </script>
   </body>
 </html>

@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Astro 5+（Content Collections + 类型安全 schema）· sharp · exifr · Decap CMS（仅文字操作）· Cloudflare Pages · Node LTS。纯静态输出，无前端框架依赖。技术栈已在 doc/designv0.0.1.md 拍板，非开放决策。
+Astro 5+（Content Collections + 类型安全 schema）· sharp · exifr · Sveltia CMS（仅文字操作）· Cloudflare Pages · Node LTS。纯静态输出，无前端框架依赖。技术栈已在 doc/designv0.0.1.md 拍板，非开放决策。
 
 ## Users
 
@@ -25,7 +25,7 @@ Astro 5+（Content Collections + 类型安全 schema）· sharp · exifr · Deca
 
 ## Operating Context
 
-相机导出 → `raw/` → `npm run import -- --series <标识>`（压缩 + 缩略图 + EXIF sidecar）→ 本地预览 → `git push` → Cloudflare Pages 自动上线。文字修订在 `/admin`（Decap CMS，GitHub OAuth）。原图仅存本地，备份由用户自行负责。回滚 = GitHub revert 一次提交。
+相机导出 → `raw/` → `npm run import -- --series <标识>`（压缩 + 缩略图 + EXIF sidecar）→ 本地预览 → `git push` → Cloudflare Pages 自动上线。文字修订在 `/admin`（Sveltia CMS，粘贴 GitHub 访问令牌登录）。原图仅存本地，备份由用户自行负责。回滚 = GitHub revert 一次提交。
 
 ## Capabilities and Constraints
 

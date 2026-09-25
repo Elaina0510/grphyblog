@@ -1,27 +1,30 @@
-# Tasks · Decap 后台（decap-cms）
+# Tasks · 内容后台（decap-cms → 实际落地为 Sveltia）
 
-> 版本 v0.0.1 ｜ 来源：designv0.0.1.md §3、§4 ｜ 依赖：content-model（schema 对齐）、deployment（线上 OAuth 回调需要真实域名；本地可先行大半）
+> 版本 v0.0.2 ｜ 来源：designv0.0.1.md §3、§4 ｜ 依赖：content-model（schema 对齐）、deployment（线上登录需真实域名；本地可先行大半）
 > 目标：`/admin` 网页后台——仅文字操作：新建系列条目、写手记/正文、调排序、选已有封面、草稿开关；全程无照片上传通道。
+>
+> **引擎变更记录（实测后）**：原计划 Decap。实跑发现 Decap 3.x 的 GitHub 后端**只走 Netlify OAuth 代理**
+> （`api.netlify.com/auth`），本站在 Cloudflare Pages → 代理回 404，「Login with GitHub」必然 Not Found
+> （`auth_type: github` + `client_id` 被整个忽略——已读 CDN bundle 源码 + 无头浏览器点击复现）。
+> 经用户确认，改用 **Sveltia CMS**（`@sveltia/cms`，Decap 的现役继任者，读同一份 config.yml / 同一套内容仓库），
+> 登录走**粘贴 GitHub 访问令牌**（`auth_methods: [token]`，无第三方代理、无自建服务器）。
+> 影响面仍**仅 `public/admin/` 一目录**（+ 本模块单测/文档），内容模型与 Astro 构建不动。
 
 ## 最小任务清单
 
-- [ ] 1. `public/admin/index.html`：引入 Decap CMS 脚本（锁定当前版本 URL，不用 latest）+ 防搜索引擎收录 meta
-- [ ] 2. `public/admin/config.yml` backend：GitHub backend，指向本站仓库与主分支；`site_url`/`display_url` 用 Pages 域名
-- [ ] 3. 产出 `doc/github-oauth-setup.md`：OAuth App 逐步注册指引（用户网页点击可完成）；client_id 填入 config.yml；不引入 Netlify 等第三方代理
-- [ ] 4. series 编辑器（folders 类型）：路径映射 `src/content/series/<name>/index.md`；字段=title/date/tags/order/draft + 手记正文编辑器 + cover 图字段
-- [ ] 5. posts 编辑器（files 类型）：文件名模式 `<日期>-<标题>.md`；字段与 content-model schema 一一对应
-- [ ] 6. 照片禁上传：cover 字段配 `media_library` 只从已入库照片选取；全局关闭后台文件上传入口——以 Decap 当前版能力为准，若无法完全关闭，加构建期检查兜底（发现新增非脚本来源图片文件即报警）
-- [ ] 7. draft 开关 = 发布/撤下按钮；order 数字 = 排序调整；验证改后自动 commit 到仓库
-- [ ] 8. Editor Preview 简易模板：CMS 运行时无法 import Astro 的 TS 工具函数，改为在 config.yml preview 中以 `public_folder` 映射出与 `imageUrl` 相同的基准路径；两处文件头注释互指，约定"改路径规则必须同步另一处"，验收时人工比对预览图与线上图一致
-- [ ] 9. 本地验证：本地 git gateway 代理登录，改一条文字 → 确认生成本地 commit → reset 丢弃
-- [ ] 10. 线上验证（依赖 deployment 完成）：`https://<站点>/admin/` OAuth 登录 → 改标题 → GitHub 看到机器人 commit → 自动重新构建上线
-- [ ] 11. 风险备案落地：config.yml 顶部注释注明"若 Decap 停维迁移 Sveltia，影响面仅此目录"（§3 备案）
+- [x] 1. `public/admin/index.html`：引入 CMS 脚本（锁定 `@sveltia/cms@0.221.0`，不用 latest、不加 `type="module"`、无独立 CSS）+ 防收录 meta
+- [x] 2. `public/admin/config.yml` backend：GitHub backend 指向本站仓库与主分支；`site_url`/`display_url` 用 Pages 域名；`auth_methods: [token]`
+- [x] 3. 产出 `doc/admin-login-setup.md`：访问令牌生成 + 登录 + 验收逐步指引（取代旧 `doc/github-oauth-setup.md`，后者已删除；不再引入 Netlify 代理）
+- [x] 4. series 编辑器（nested collection）：路径映射 `src/content/series/<name>/index.md`（`meta.path.index_file` + `nested.depth`）；字段=title/date/tags/order/draft + cover 文本字段 + 手记正文
+- [x] 5. posts 编辑器（folder 类型，平铺）：文件名模式 `<日期>-<标题>.md`；字段与 content-model schema 一一对应
+- [x] 6. 照片禁上传：cover 用 `widget: string`（无上传/拖拽控件）+ 构建期兜底 `npm run check-images`（media_folder 落 public/uploads，出现图片即构建失败）
+- [x] 7. draft 开关 = 发布/撤下；order 数字 = 排序；改后自动 commit（本地由单测保证字段形状，线上 commit 见任务 10）
+- [x] 8. 预览基准：Sveltia 自带编辑器预览，URL base 口径靠 config.yml 的 `public_folder`；`imageUrl.ts` 与 config.yml 头部互指注释仍在（旧 index.html 的 resolvePreviewUrl 镜像随引擎退役）
+- [ ] 9. 本地验证（可选）：Sveltia「使用本地仓库」入口（浏览器文件系统 API）试改一条文字
+- [ ] 10. **线上验证（门禁 D，需用户令牌）**：`https://<站点>/admin/` 用访问令牌登录 → 改标题 → GitHub 出现 commit → 自动重建上线；逐项过「能改不能传图」验收表
+- [x] 11. 风险备案落地：config.yml/index.html 顶部注释记录「为什么换 Sveltia」与影响面仅 `public/admin/`
 
 ## 验收标准
 
-- [ ] 里程碑 3 口径：网页后台改文字/调排序/选已有封面 → 自动发布，全程传不了也传不进新图片
-- [ ] 只有持 OAuth 授权且对仓库有写权限的 GitHub 账号能提交（仓库 public，天然仅站长可用）
-
-## 设计约束（勿偏离）
-
-- 后台仅文字操作（§4）；sidecar 与照片文件在后台一律只读展示或不出现
+- 单测（本模块，`tests/unit/decap-cms.test.ts`）+ `npm run build` 全绿 = 本地部分达成（已完成）。
+- 任务 10 线上清单全绿 = 模块 11 / 里程碑 3 达成（待用户令牌登录）。

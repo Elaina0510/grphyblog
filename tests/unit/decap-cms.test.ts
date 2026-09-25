@@ -7,6 +7,11 @@ import { describe, expect, it } from 'vitest';
 
 import { postsSchema, seriesSchema } from '../../src/content/schemas';
 
+// /admin 后台契约测试。引擎：Sveltia CMS（@sveltia/cms）——历史上是 Decap，见 index.html 注释。
+// 本文件钉住三条红线：
+//   1) config.yml 只允许 Sveltia schema 认得的键（Sveltia 处处 additionalProperties:false）；
+//   2) CMS 写出的 frontmatter 键集合 == src/content/schemas.ts 的 strict schema（不多不少）；
+//   3) 照片禁上传：cover 走 string widget + 无 OAuth/代理入口 + 构建期守卫（R5 另有独立用例）。
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 // js-yaml 是 astro 的依赖，这里作为**本仓库 devDependency** 显式装了一份（见 package.json），
@@ -103,11 +108,11 @@ function schemaKeysFromSource(exportName: string): string[] | null {
   return keys.length > 0 ? keys : null;
 }
 
-/** Decap 各 widget 存进 frontmatter 的实际值形状（与 date_format / valueType 对齐）。 */
+/** 各 widget 存进 frontmatter 的实际值形状（与 type/format、value_type 口径对齐）。 */
 function sampleValueFor(field: CmsField): unknown {
   switch (field.widget) {
-    case 'date':
-      // date_format: YYYY-MM-DD 时 Decap 写成裸日期串，js-yaml/Astro 会解析成 Date
+    case 'datetime':
+      // Sveltia widget 名为 datetime；type: date + format: YYYY-MM-DD → 落盘成裸日期串
       return new Date(Date.UTC(2026, 8, 20)).toISOString().slice(0, 10);
     case 'number':
       return field.value_type === 'int' ? 2 : 2.5;
@@ -130,9 +135,9 @@ function sampleValueFor(field: CmsField): unknown {
 
 // =============================================================================
 // decap-cms 任务 1/2：/admin 静态文件与 backend 指向
-// 外部动作（注册 OAuth、线上登录）不在此处，见 doc/github-oauth-setup.md。
+// 外部动作（生成访问令牌、线上登录验收）不在此处，见 doc/admin-login-setup.md。
 // =============================================================================
-describe('public/admin · 文件与 Decap 版本锁定（任务 1）', () => {
+describe('public/admin · 文件与 Sveltia 版本锁定（任务 1）', () => {
   it('index.html 与 config.yml 都在 public/admin/（构建原样拷进 dist/admin/）', () => {
     expect(existsSync(INDEX_PATH)).toBe(true);
     expect(existsSync(CONFIG_PATH)).toBe(true);
@@ -140,17 +145,20 @@ describe('public/admin · 文件与 Decap 版本锁定（任务 1）', () => {
     expect(existsSync(resolve(ADMIN_DIR, '.gitkeep'))).toBe(true);
   });
 
-  it('Decap 脚本 URL 锁到具体补丁版，不含 latest / 版本区间', () => {
+  it('Sveltia 脚本 URL 锁到具体版本，不含 latest / 版本区间', () => {
     const src = [...INDEX_TEXT.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
-    const cms = src.filter((s) => /decap-cms/i.test(s));
-    expect(cms.length, 'index.html 没引入 decap-cms 脚本').toBeGreaterThan(0);
+    const cms = src.filter((s) => /@sveltia\/cms/i.test(s));
+    expect(cms.length, 'index.html 没引入 @sveltia/cms 脚本').toBeGreaterThan(0);
     for (const url of cms) {
       expect(url, `CDN 地址未锁版本：${url}`).toMatch(
-        /decap-cms@\d+\.\d+\.\d+\/dist\/decap-cms\.js$/,
+        /@sveltia\/cms@\d+\.\d+\.\d+\/dist\/sveltia-cms\.js$/,
       );
-      expect(url, `CDN 地址缺 /dist/ 会 404：${url}`).toContain('/dist/');
+      expect(url, `CDN 地址缺 /dist/：${url}`).toContain('/dist/');
       expect(url).not.toMatch(/\/latest|@next|@\^|@~|@'\+/);
     }
+    // Sveltia 官方 Start Guide 的两条硬约定：不是 ES module、样式全打进 JS（无独立 CSS）。
+    expect(INDEX_TEXT).not.toMatch(/<script[^>]+type="module"/i);
+    expect(INDEX_TEXT).not.toMatch(/<link[^>]+stylesheet[^>]+sveltia/i);
   });
 
   it('后台页有 noindex，且没有任何前端框架依赖（纯 script 引入）', () => {
@@ -170,49 +178,51 @@ describe('config.yml · 语法与 backend（任务 2）', () => {
     expect(typeof config).toBe('object');
   });
 
-  it('backend 指向本站仓库与主分支，走 GitHub implicit', () => {
+  it('backend 指向本站仓库与主分支', () => {
     expect(config.backend.name).toBe('github');
     expect(config.backend.repo).toBe(REPO);
     expect(config.backend.branch).toBe(BRANCH);
-    expect(config.backend.auth_type).toBe('github');
   });
 
-  it('site_url / display_url 用 Pages 域名（OAuth 回调基址与它同源）', () => {
-    expect(config.site_url).toBe(SITE_ORIGIN);
-    expect(config.display_url).toBe(SITE_ORIGIN);
+  it('登录口径 = 只允许粘贴 GitHub Access Token（auth_methods: [token]）', () => {
+    expect(config.backend.auth_methods).toEqual(['token']);
   });
 
-  it('publish_mode: simple（改完即 commit）+ local_backend: true（本地代理验证用）', () => {
-    expect(config.publish_mode).toBe('simple');
-    expect(config.local_backend).toBe(true);
-  });
-
-  it('client_id：未注册时是占位、注册后必须是 GitHub client id 形状；永不出现 client_secret', () => {
-    const filled = config.backend.client_id;
-    if (filled === undefined) {
-      // 现状（本地实现阶段）：只允许留注释占位 + TODO，不许臆造值
-      expect(CONFIG_TEXT).toMatch(/# TODO:.*client_id/);
-      expect(CONFIG_TEXT).toMatch(/#\s*client_id:/);
-    } else {
-      // 用户注册 OAuth App 后回填：旧版 40 位十六进制 或 新版 Iv/Ov 前缀 base62，且不能还是占位符
-      expect(
-        String(filled),
-        'client_id 形状不对（GitHub OAuth App：40 位十六进制 或 Iv/Ov 前缀）',
-      ).toMatch(/^([0-9a-f]{40}|(Iv|Ov)[A-Za-z0-9]+)$/i);
+  it('不配 OAuth/代理：backend 里没有 auth_type / client_id / proxy_url / site_id', () => {
+    const keys = everyKey(config.backend);
+    // Sveltia schema 里 auth_type 只允许空串（授权码流），client_id/proxy_url 根本不是它的键；
+    // 而 Decap 3.x 的 GitHub 后端会无视这些键、强行走 Netlify 代理 → 本站（Cloudflare）404。
+    for (const banned of ['auth_type', 'client_id', 'proxy_url', 'site_id', 'app_id']) {
+      expect(keys, `backend 不该出现键 ${banned}`).not.toContain(banned);
     }
-    // 密钥红线：本目录会随站点公开，任何地方都不许出现 client_secret 赋值
+  });
+
+  it('密钥红线：任何地方都不出现 client_secret 赋值（本目录随站点公开）', () => {
     expect(CONFIG_TEXT).not.toMatch(/^\s*#?\s*client_secret\s*:\s*\S/m);
     expect(everyKey(config.backend)).not.toContain('client_secret');
   });
 
-  it('不引入 Netlify 等第三方代理（backend 里没有 proxy_url / netlify 端点）', () => {
-    const keys = everyKey(config);
-    expect(keys).not.toContain('proxy_url');
-    expect(CONFIG_TEXT).not.toMatch(/api\.netlify\.com|netlify\.com\/\.netlify/);
+  it('site_url / display_url 用 Pages 域名（「在站点中打开」链接与它同源）', () => {
+    expect(config.site_url).toBe(SITE_ORIGIN);
+    expect(config.display_url).toBe(SITE_ORIGIN);
   });
 
-  it('停维备案注释在位：Decap 停维 → 迁 Sveltia，影响面仅 public/admin/', () => {
+  it('publish_mode: simple（改完即 commit）；不用 local_backend（Sveltia 无此键）', () => {
+    expect(config.publish_mode).toBe('simple');
+    expect(everyKey(config)).not.toContain('local_backend');
+  });
+
+  it('不引用 Netlify 代理端点（api.netlify.com 只可能出现在解释性注释里）', () => {
+    const nonComment = CONFIG_TEXT
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+    expect(nonComment).not.toMatch(/api\.netlify\.com|\.netlify\/|\bnetlify\b/i);
+  });
+
+  it('头部注释记录了「为什么换 Sveltia」（Decap 只走 Netlify 代理 → 本站 404）', () => {
     expect(CONFIG_TEXT).toMatch(/Sveltia/);
+    expect(CONFIG_TEXT).toMatch(/Decap/);
     expect(CONFIG_TEXT).toMatch(/public\/admin\//);
   });
 });
@@ -229,14 +239,16 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     // glob: src/content/series/*/index.md
     expect(series.folder).toBe('src/content/series');
     expect(series.path).toBe('{{slug}}/index');
-    expect(series.nested?.index_file).toBe('index');
+    // Sveltia：index 文件名主干写在 meta.path.index_file（nested 里只有 depth/subfolders/summary）
+    expect((series.meta as { path?: { index_file?: string } })?.path?.index_file).toBe('index');
+    expect(series.nested?.depth).toBeDefined();
     // glob: src/content/posts/*.md（平铺，条目目录就是同名资源夹）
     expect(posts.folder).toBe('src/content/posts');
     expect(posts.path).toBe('{{slug}}');
     expect(posts.nested).toBeUndefined();
     for (const c of [series, posts]) {
       expect(c.extension).toBe('md');
-      expect(c.format).toBe('frontmatter');
+      expect(c.format).toBe('yaml-frontmatter');
       expect(c.create).toBe(true);
     }
   });
@@ -281,11 +293,12 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     expect(postsHasNoOrder(collectionByName('posts'))).toBe(true);
   });
 
-  it('date 字段带 YYYY-MM-DD 存储格式（z.coerce.date 直接接受，且与种子内容同形）', () => {
+  it('date 字段：datetime widget + type:date + format:YYYY-MM-DD（z.coerce.date 直接接受）', () => {
     for (const c of config.collections) {
       const date = c.fields.find((f) => f.name === 'date');
-      expect(date?.widget, `${c.name} 的 date 字段缺失`).toBe('date');
-      expect(date?.date_format).toBe('YYYY-MM-DD');
+      expect(date?.widget, `${c.name} 的 date 字段缺失`).toBe('datetime');
+      expect(date?.type, `${c.name} 的 date 应只选日期`).toBe('date');
+      expect(date?.format, `${c.name} 的 date 存储格式应为 YYYY-MM-DD`).toBe('YYYY-MM-DD');
     }
   });
 
@@ -317,8 +330,10 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     const flat = JSON.stringify(config);
     expect(flat).not.toMatch(/photos\.meta\.json/);
     expect(everyKey(config)).not.toContain('meta_field');
-    // 只有 series 用 nested + index_file 把 photos/ 挡在条目之外
-    expect(collectionByName('series').nested?.index_file).toBe('index');
+    // 只有 series 用 nested + meta.path.index_file 把 photos/ 挡在条目之外
+    expect((collectionByName('series').meta as { path?: { index_file?: string } })?.path?.index_file).toBe(
+      'index',
+    );
   });
 });
 
@@ -330,8 +345,8 @@ function postsHasNoOrder(posts: CmsCollection): boolean {
 // 任务 6：照片禁上传。配置层能关到的程度 + 构建期兜底（scripts/check-image-sources.mjs）
 // =============================================================================
 describe('禁上传（任务 6）：配置层不给任何写媒体文件的落点', () => {
-  it('media_folder 是 Decap 强制项，指向受守卫的 public/uploads（非内容 photos 目录）', () => {
-    expect(config.media_folder, 'Decap 3.16 要求 media_folder 才能启动').toBe('public/uploads');
+  it('media_folder 指向受守卫的 public/uploads（非内容 photos 目录）', () => {
+    expect(config.media_folder, 'Sveltia 要求 media_folder 才能管理媒体').toBe('public/uploads');
     expect(config.media_folder).not.toMatch(/photos/);
     // 拦截「上传进生产」的是：cover 用 string widget（无条目内上传）+ 构建期守卫 R5（public/ 不得有图片）
   });
@@ -364,27 +379,27 @@ describe('禁上传（任务 6）：配置层不给任何写媒体文件的落�
 // =============================================================================
 // 任务 8：Editor Preview 与 imageUrl 的基准口径「互指」——只查注释与常量是否都还在
 // =============================================================================
-describe('Editor Preview 基准（任务 8）：三处互指注释不许走散', () => {
-  it('public_folder 与 media_folder 前缀一致（/uploads）；内容图 URL 仍由 imageUrl 走同源根', () => {
+describe('Editor Preview 基准（任务 8）：imageUrl 与 public_folder 的互指口径不许走散', () => {
+  it('public_folder 是纯 URL 前缀（/uploads）；内容图 URL 仍由 imageUrl 走同源根', () => {
     expect(config.public_folder).toBe('/uploads');
-    // 内容封面 URL 由 index.html 内联 PUBLIC_FOLDER='/' + contentImages 处理，与上传媒体前缀是两回事
+    // 上传媒体前缀与「内容封面 URL」是两回事，后者由 imageUrl.ts 负责
     expect(CONFIG_TEXT).toMatch(/imageUrl\.ts/);
   });
 
   it('config.yml / index.html / imageUrl.ts 三处都有「改基准必须同步另一处」的互指注释', () => {
     expect(CONFIG_TEXT).toMatch(/必须同步/);
     expect(INDEX_TEXT).toMatch(/imageUrl\.ts/);
-    expect(INDEX_TEXT).toMatch(/必须同步/);
+    expect(INDEX_TEXT).toMatch(/同步/);
     const util = readFileSync(resolve(ROOT, 'src/utils/imageUrl.ts'), 'utf8');
     expect(util).toMatch(/public\/admin/);
     expect(util).toMatch(/必须同步|同步/);
   });
 
-  it('index.html 里有 preview 模板注册与 imageUrl 规则的镜像实现（不引第三方框架）', () => {
-    expect(INDEX_TEXT).toMatch(/registerPreviewTemplate/);
-    expect(INDEX_TEXT).toMatch(/resolvePreviewUrl/);
-    // 与 imageUrl.ts 同三条规则：绝对 http(s)、data/blob、base 拼接
-    expect(INDEX_TEXT).toContain('/^https?:\\/\\//i');
-    expect(INDEX_TEXT).toContain('/^(data|blob):/i');
+  it('index.html 只有一个外链 script、没有任何内联脚本（不手动 init、不留 Decap 镜像）', () => {
+    // Sveltia 加载即自动初始化；内联脚本一律是历史遗留（Decap 的 registerPreview/resolvePreview）。
+    const inline = INDEX_TEXT.replace(/<!--[\s\S]*?-->/g, '').match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i);
+    expect(inline, 'index.html 不该再有内联脚本').toBeNull();
+    const srcs = [...INDEX_TEXT.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
+    expect(srcs).toHaveLength(1);
   });
 });

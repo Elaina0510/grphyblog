@@ -246,7 +246,7 @@ git push
 
    > 上面 3、5 里的 `city-lights` / `2026-09-21-morning-fog` 是**当前种子内容的真实标识**。你以后新导入的照片/随笔，标识会变（列表页点进去看地址栏即可）。草稿状态的条目（`daily-frames`、`2026-08-10-foggy-morning`）**不出现**才是对的。
 3. 再随手访问一个不存在的路径，例如 `https://grphyblog.pages.dev/duijiangbujian/` → 应该显示本站**那个带"回首页"按钮的 404 页**，而不是 Cloudflare 的默认错误页或纯文字 "Not Found"。（这一步对应 deployment 任务 7 的线上部分；本地已有产物断言。）
-4. `/admin` **现在还打不开**，是正常的：后台（Decap CMS）属下一个模块（decap-cms），上线后第 8 节再说。
+4. `/admin` **现在还打不开**，是正常的：后台（内容管理，引擎 Sveltia）属下一个模块（内容后台），上线后第 8 节再说。
 
 ### 4.6 域名与 `site` 对齐（只在改了项目名时要做）
 
@@ -395,7 +395,7 @@ Cloudflare 项目 → **Deployments** → 找最近一次"Success"的旧部署 �
 ## 8. 两条不能破的安全红线（本清单不越界）
 
 1. **原图与密钥永不入库。** `raw/`（相机原图）与 `thumbs/`（本地暂存缩略图）已被 `.gitignore` 排除，进仓库的只有压缩产物（`.webp` + `.thumb.webp`）与 Markdown。第 3.1 节那两条命令就是复核这件事；每次 push 前看一眼 `git status`。备份是你自己的事——原图只在你的硬盘上，定期拷一份到移动硬盘/网盘。
-2. **`/admin` 后台登录用的 GitHub OAuth App 不在这份清单里注册。** 它是后台上线那一步（decap-cms 模块，门禁 Gate D）才做的事：在 GitHub 个人设置里建 OAuth App、拿 `client_id`/`client_secret` 填进 `public/admin/config.yml`。`client_secret` 只在前端做隐式授权时使用（public 仓库挡不住它被读到），真正的门槛是"这个 GitHub 账号必须对仓库有写权限"——所以那一步会同时教你怎么把仓库写权限只留给你自己。到时候**另出清单，本清单不做**。
+2. **`/admin` 后台登录用的 GitHub 访问令牌（PAT）不在这份清单里生成。** 它是后台上线那一步（内容后台模块，门禁 Gate D）才做的事，逐步指引在 `doc/admin-login-setup.md`：后台引擎是 Sveltia，登录方式=在 `/admin/` 粘贴一个只勾 `repo` 权限的**个人访问令牌**（PAT），**不注册 OAuth App、不用 client_secret、不引入 Netlify 等第三方代理**。真正的门槛是"这个令牌所属的 GitHub 账号必须对仓库有写权限"——所以那一步会同时提醒你把仓库写权限只留给自己。本清单不做。
 
 ---
 

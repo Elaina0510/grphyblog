@@ -1,6 +1,6 @@
 # 柚 · Justyou —— 个人摄影博客
 
-Astro 纯静态摄影站。内容与代码分离，照片由本地脚本导入，文字在 `/admin`（Decap CMS）维护，
+Astro 纯静态摄影站。内容与代码分离，照片由本地脚本导入，文字在 `/admin`（Sveltia CMS）维护，
 托管在 Cloudflare Pages（push 即上线）。设计见 `doc/designv0.0.1.md`。
 
 ---
@@ -172,7 +172,7 @@ src/layouts/          页面骨架
 src/styles/           设计变量（视觉阶段只改这里 + 组件）
 src/pages/            路由页面
 scripts/              工具脚本（import-photos.mjs 在此）
-public/admin/         Decap CMS 前端与 config.yml
+public/admin/         Sveltia CMS 前端与 config.yml
 raw/  thumbs/         本地素材区，已被 .gitignore 排除，不进仓库
 astro.config.mjs      构建与图片规格参数（唯一的图片参数出处）
 ```
@@ -271,8 +271,9 @@ git push
 
 ## 6. `/admin` 内容后台（只改文字，不传照片）
 
-线上地址 **`https://grphyblog.pages.dev/admin/`**，用 GitHub 账号登录（design §3：GitHub OAuth implicit 流，
-不引 Netlify 之类的第三方代理；仓库 Public，真正的门槛是"这个账号对仓库有写权限"）。
+线上地址 **`https://grphyblog.pages.dev/admin/`**，引擎 Sveltia CMS，用**粘贴 GitHub 访问令牌**登录
+（不引 Netlify 之类的第三方代理、不自建服务器；仓库 Public，真正的门槛是"令牌所属账号对仓库有写权限"）。
+> 原计划的 Decap 直连 GitHub 登录在新版里只走 Netlify 代理 → 本站（Cloudflare Pages）必挂，已改 Sveltia。详见 `doc/admin-login-setup.md`。
 
 **后台能做的四件事**（design §4「仅文字操作」）：
 
@@ -282,34 +283,38 @@ git push
 4. 从**已入库照片**里选封面：填相对本条目的路径，如 `photos/night-01.webp`。
 
 **后台做不到的一件事：传照片。** 全站照片只有一个通道——本地 `npm run import`
-（压缩 + 缩略图 + 读 EXIF 写 `photos.meta.json`）。三层保证：
+（压缩 + 缩略图 + 读 EXIF 写 `photos.meta.json`）。
 
-- `public/admin/config.yml` 里**没有任何 `media_folder`**（上传没有落点），封面字段是可输入的文本框而非上传区；
-- `photos/` 与 `photos.meta.json` 在后台不作为可编辑条目出现（系列 collection 用 `nested.index_file` 只认 `index.md`）；
-- 兜底：`npm run check-images`（挂在 `prebuild` 上，`npm run build` 必然经过）——
-  只要出现"没被 sidecar 登记"或"躺在 `photos/` 之外 / `public/` 里"的图片，构建立即失败。
+「禁上传」怎么落的（三层，后台只管文字）：
 
-相关文件只有三个（Decap 走 CDN，**不是 npm 依赖**，构建不需要联网）：
+- 封面字段 `cover` 是 `widget: string`（只能打字的文本框），条目表单里**没有上传/拖拽控件**；
+- `photos/` 与 `photos.meta.json` 在后台不作为可编辑条目出现（系列 collection 用嵌套 + `meta.path.index_file` 只认 `index.md`）；
+- 兜底：`npm run check-images`（挂在 `prebuild` 上，`npm run build` 必然经过）——`media_folder` 指的是
+  `public/uploads`，一旦那里出现图片（有人硬从后台媒体库上传），构建立即失败 → 传不进生产。
+  只要出现"没被 sidecar 登记"或"躺在 `photos/` 之外 / `public/` 里"的图片，同理失败。
+
+相关文件只有三个（Sveltia 走 CDN，**不是 npm 依赖**，构建不需要联网）：
 
 | 文件 | 作用 |
 | --- | --- |
-| `public/admin/index.html` | 后台页面：引入**锁定版本** `decap-cms@3.16.3` + `noindex` 防收录 + Editor Preview 模板 |
-| `public/admin/config.yml` | 后台配置：backend / 站点域名 / series 与 posts 两个 collection 的字段 |
+| `public/admin/index.html` | 后台页面：引入**锁定版本** `@sveltia/cms@0.221.0` + `noindex` 防收录（样式已打进 JS，无独立 CSS） |
+| `public/admin/config.yml` | 后台配置：backend（GitHub + 只用令牌登录）/ 站点域名 / series 与 posts 两个 collection 的字段 |
 | `scripts/check-image-sources.mjs` | 照片来源兜底检查（上面第 3 层） |
 
-### 6.1 上线后台只需做一次（约 5~8 分钟，全程点网页）
+### 6.1 上线后台只需做一次（约 3~5 分钟，全程点网页）
 
-**照 `doc/github-oauth-setup.md` 做**：在 GitHub 注册一个 OAuth App（Homepage 与
-Authorization callback URL 都填本站 `/admin/`），拿到 **`client_id`** 后填进
-`public/admin/config.yml` 里 `auth_type: github` 下面那一行（文件里有 `# TODO` 标着），
-push 之后 `/admin/` 就会出现 "Login with GitHub"。
-⚠️ 那一步用不到 `client_secret`，也**绝不能**把任何 secret 写进仓库（该目录会随站点公开）。
+**照 `doc/admin-login-setup.md` 做**：在 GitHub 生成一个**访问令牌（PAT，classic，只勾 `repo`）**，
+push 本模块改动后打开 `/admin/` → 点「使用访问令牌登录」→ 粘贴令牌即可。
+> 为什么不再走 OAuth：新版 Decap 的 GitHub 后端只认 Netlify 登录代理（`api.netlify.com/auth`），
+> 本站在 Cloudflare Pages 上，那个代理回 404 → 「Login with GitHub」必然 Not Found。已改用的 Sveltia
+> 支持粘贴令牌直连，不需要任何第三方代理或自建服务器。之前注册的 OAuth App 可以删掉。
+> ⚠️ 令牌**绝不写进仓库任何文件**，只粘贴在你浏览器里；泄漏/换机时按 6.1 文档一键撤销重发。
 
 ### 6.2 日常：文字在后台改，照片在本地导
 
 ```bash
 npm run import -- --series <系列标识>   # 照片：只在本地跑，跑完 git push 上线
-# 文字：打开 https://grphyblog.pages.dev/admin/ → 登录 → 改 → Publish（自动 commit + 自动重建）
+# 文字：打开 https://grphyblog.pages.dev/admin/ → 用访问令牌登录 → 改 → Publish（自动 commit + 自动重建）
 ```
 
 保存成功时 GitHub 会多出一条 commit，Cloudflare Pages 检测到就自动重新构建，1~2 分钟后线上生效。
@@ -317,10 +322,10 @@ npm run import -- --series <系列标识>   # 照片：只在本地跑，跑完 
 
 ### 6.3 后台的两条已知边界（不是 bug，是取舍）
 
-- **本地 `npm run dev` 打开 `/admin/` 只能看界面，不能保存**：真实读写需要 GitHub OAuth 或本机 git gateway
-  代理（`npx decap-server`），离线自检请改用 `npm run test:run`（含字段与 schema 对齐、无上传落点等断言）。
-- **后台预览里的封面图在线上多半显示不出来**：Astro 构建会把 `src/content` 里的图交给 Vite 资源管线、
-  输出带 hash 的 `/_astro/xxx.webp`，CDN 上的 CMS 拿不到那份映射；本地 `astro dev` 下预览能看到真图。
-  这只影响"预览好不好看"，保存下来的 `cover` 仍是相对路径原文，前台取图走 `src/utils/contentImages.ts`，
-  与后台无关。图片 URL 基准规则的同步约定见 `src/utils/imageUrl.ts` 与 `public/admin/config.yml` 头部注释。
+- **本地 `npm run dev` 打开 `/admin/` 是 Sveltia 的「使用本地仓库」入口**（走浏览器文件系统 API），
+  与线上令牌登录是两条独立通道；离线自检请改用 `npm run test:run`（含字段与 schema 对齐、无上传落点等断言）。
+- **后台预览里的封面图多半显示不出来**：Astro 构建把 `src/content` 里的图交给 Vite 资源管线、输出带 hash
+  的 `/_astro/xxx.webp`，CDN 上的 CMS 拿不到那份映射；保存下来的 `cover` 仍是相对路径原文，前台取图走
+  `src/utils/contentImages.ts`，与后台无关。图片 URL 基准规则的同步约定见 `src/utils/imageUrl.ts` 与
+  `public/admin/config.yml` 头部注释。
 

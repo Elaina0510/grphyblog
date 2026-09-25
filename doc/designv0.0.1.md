@@ -49,13 +49,14 @@ grphyblog/
 3. 图片路径统一由一个 `imageUrl` 工具函数生成：日后整体迁 R2/图床只改这一个文件（预留 B 方案退出路径）。
 4. 新内容类型 = 新 collection 配置 + 新 schema，不动现有结构。
 
-**部署链**：GitHub 仓库 → Cloudflare Pages 自动构建（push 即上线，免费档带宽不限）。Decap CMS 经 GitHub OAuth 登录，保存即提交。回滚 = 在 GitHub revert 一次提交。
+**部署链**：GitHub 仓库 → Cloudflare Pages 自动构建（push 即上线，免费档带宽不限）。后台（Sveltia CMS）保存即提交。回滚 = 在 GitHub revert 一次提交。
 
-**后台鉴权机制（已定）**：GitHub OAuth App（implicit grant，`repo` scope），注册由 AI 出步骤、用户在 GitHub 网页上点完成；仓库为 public（网站本就公开），仅持 OAuth 授权且对仓库有写权限的账号能经 `/admin` 提交。不引入 Netlify 等第三方代理。
+**后台鉴权机制（2026-09-25 修订）**：改用 **Sveltia CMS** + **粘贴 GitHub 访问令牌（PAT，`repo` scope）** 登录——不注册 OAuth App、不引 Netlify 等第三方代理、不自建后端；仓库 public，仅持写权限账号的令牌能经 `/admin` 提交。
+> 原决策（GitHub OAuth App implicit grant，AI 出步骤用户点）已**证伪并作废**：Decap 3.x 的 GitHub 后端**只走 Netlify OAuth 代理**（`api.netlify.com/auth`），本站托管 Cloudflare Pages → 代理回 404，直连 GitHub 登录这条路它根本没实现（`auth_type`/`client_id` 被忽略；读 bundle 源码 + 无头浏览器点击复现）。Sveltia 是 Decap/Netlify CMS 的现役继任者，读同一份 config.yml 与内容仓库。详见 `doc/admin-login-setup.md` 与 `doc/tasksv0.0.1/progress.md`。
 
-**技术栈**：Astro 5+（实施时取当时稳定大版本；Content Collections + 类型安全 schema）· sharp（脚本压缩）· exifr（EXIF）· Decap CMS · Cloudflare Pages · Node LTS。纯静态输出，无前端框架依赖。
+**技术栈**：Astro 5+（实施时取当时稳定大版本；Content Collections + 类型安全 schema）· sharp（脚本压缩）· exifr（EXIF）· Sveltia CMS · Cloudflare Pages · Node LTS。纯静态输出，无前端框架依赖。
 
-**CMS 风险备案**：Decap CMS 于 2026-09 核实仍活跃维护；若未来停维，改用兼容替代 Sveltia CMS，影响面仅 `public/admin/` 一个目录，内容仓库与构建不受波及。
+**CMS 风险备案**：Sveltia 走 CDN 且版本锁定（`@sveltia/cms@0.221.0`）；若将来停维，换兼容替代只影响 `public/admin/` 一个目录，内容仓库与构建不受波及。
 
 ## 4. 照片入库与发布流程
 

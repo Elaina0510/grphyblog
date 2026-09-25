@@ -1,117 +1,81 @@
 # =============================================================================
-# Decap CMS 后台配置（/admin）—— design §3「后台鉴权」+ §4「/admin 仅文字操作」
+# 内容后台配置（/admin）—— 引擎：Sveltia CMS（@sveltia/cms）
 #
-# 影响面：本目录（public/admin/）就是后台的全部。Astro 把 public/ 原样拷进 dist/，
-# 于是线上 https://grphyblog.pages.dev/admin/ 直接就是这个页面 + 这份 config.yml。
+# 为什么不是 Decap：Decap 3.x 的 GitHub 后端**删掉了「直连 GitHub 登录」**，
+#   只会走 Netlify 的 OAuth 代理（api.netlify.com/auth），本站托管在 Cloudflare Pages，
+#   代理回 404 → 登录必然失败（已实测复现）。Sveltia 与 Decap 配置大体兼容，
+#   并支持「粘贴 GitHub Access Token 直接登录」，不需要任何第三方代理或自建服务器。
+#   登录步骤（生成令牌 + 粘贴）见 doc/admin-login-setup.md。
 #
-# ⚠️ 停维备案（design §3）：若 Decap CMS 停止维护，迁到兼容替代 **Sveltia CMS**。
-#    Sveltia 读同一份 config.yml、同一套 GitHub backend，**影响面仅 public/admin/ 本目录**
-#    （换的是 index.html 里的 script 标签与个别配置键名）：
-#    内容仓库 src/content/**、schema（src/content/schemas.ts）、Astro 构建一律不受波及。
+# 影响面：本目录（public/admin/）就是后台的全部。Astro 把 public/ 原样拷进 dist/。
 #
-# 🔒 照片「禁上传」是怎么落的（decap-cms 任务 6，三层）：
-#    1) 本文件**任何地方都不出现 media_folder**（全站级与 collection 级都没有）。
-#       Decap 的上传必须有落点目录才会写入；没有 media_folder 就没有可写落点 → 上传通道不成立。
-#       只有 public_folder（纯 URL 前缀，只读引用）在配，见下面「🖼 预览基准」。
-#    2) cover 字段用 `widget: string`，**不用 image widget**：后台不渲染上传区/拖拽区，
-#       只能填「相对本条目的照片路径」（如 photos/night-01.webp），文件名从已入库的
-#       src/content/<集合>/<条目>/photos/ 里复制。照片本身只能出自 `npm run import`。
-#       （Decap 的 media_library 只有 uploadcare / cloudinary 这类**第三方上传**实现，
-#        没有可靠的「只列已入库照片」实现；用 image + media_library 反而重新打开上传口，
-#        故按「以当前版本实际能力为准」的口径改成 string + 构建期兜底。若将来确认某版本
-#        支持只读媒体夹，可把下面「可选：只读媒体夹（未启用）」一块解开替换 cover 字段。）
-#    3) 兜底检查：`npm run check-images`（scripts/check-image-sources.mjs，并挂在 prebuild 上）。
-#       任何「photos/ 之外的图片」「sidecar 未登记的图片」「public/ 里的图片」都会让构建失败。
-#       → 即便后台被绕过、或有人手工塞图，第二张照片通道也进不了线上产物。
+# 🔒 照片「禁上传」是怎么落的（三层，与迁移 Decap 时同口径）：
+#    1) cover 字段用 `widget: string`（不是 image）：条目表单里没有上传/拖拽控件，
+#       只能填「相对本条目的照片路径」（如 photos/night-01.webp）。
+#    2) media_folder 指向 public/uploads：即便有人从后台媒体库真上传了文件，
+#    3) 兜底检查：`npm run check-images`（scripts/check-image-sources.mjs，并挂在 prebuild 上）
+#       的 R5 规则——public/ 下不得出现图片。
+#       有人真去后台媒体库上传，文件落 public/uploads，下一次 npm run build（= Pages 构建命令）
+#       即失败 → 传不进生产。照片本身只能出自本地 `npm run import`。
 #
-# 🖼 预览基准（decap-cms 任务 8）：CMS 运行时是 CDN 上的 JS，**import 不到我们 Astro 的 TS 工具**，
-#    所以「图片 URL 规则」在本目录里有第二份实现：`public_folder`（下面）+
-#    `public/admin/index.html` 里的 `resolvePreviewUrl()`。它们必须与
-#    **src/utils/imageUrl.ts** 的规则一致（绝对 http(s) 原样返回；相对路径 = base + '/' + path，
-#    base 由 PUBLIC_IMAGE_BASE 决定，默认同源根 '/'）。
-#    ➜ **改 imageUrl.ts 的基准规则（含 PUBLIC_IMAGE_BASE 口径）时，必须同步改 config.yml 的
-#      public_folder 与 index.html 的 resolvePreviewUrl()**；imageUrl.ts 头部有指向本文件的互指注释。
-#    验收：人工比对「后台预览图」与「线上图」是否同一张（见 doc/github-oauth-setup.md 末节）。
+# 🖼 预览基准：前台图片 URL 规则的唯一出口是 src/utils/imageUrl.ts。
+#    Sveltia 的编辑器预览由它自己按 public_folder 拼 URL；本文件的 public_folder
+#    与其默认基准（同源根 '/'）保持一致。➜ 改 imageUrl.ts 的基准规则时，**必须同步**改本
+#    文件的 public_folder（imageUrl.ts 头部有反向互指注释）。
 #
-# 📎 登录（decap-cms 任务 3）：GitHub OAuth App 的 **implicit 流**（response_type=token），
-#    不引入 Netlify 等第三方代理，也不自建后端。注册步骤与 client_id 回填位置见
-#    **doc/github-oauth-setup.md**。下面 backend 里的 client_id 是**占位**，未注册前保持注释状态。
+# ✍️ 提交信息：未自定义（用 Sveltia 默认文案）。GitHub 上按作者/时间检索即可。
 # =============================================================================
-
 backend:
   name: github
-  # 本站仓库（必须 Public：design §3「仓库公开，写权限靠 OAuth + 仓库协作权限挡」）
+  # 本站仓库（必须 Public：仓库公开，写权限靠 GitHub 令牌/协作权限挡）
   repo: Elaina0510/grphyblog
   branch: main
-  # implicit 流：直接在 github.com 授权，token 从 URL fragment 回来，不需要后端代理。
-  auth_type: github
-  # client_id 已回填（OAuth App 注册步骤见 doc/github-oauth-setup.md）。
-  #       只填 client_id；implicit 流**没有** client_secret，也**绝不**把 secret 写进本文件
-  #       （本目录会随站点公开，任何 secret 都等于公开）。
-  client_id: Ov23liOrFaqmtuSi7Hbn
-  commit_message: 'content(admin): update {{path}} via {{package_name}}'
+  # 只允许「粘贴 Access Token」登录：显式禁掉那个在本站点必然 404 的 OAuth 入口，
+  # 免得再看到 "Login with GitHub → Not Found" 这种误导性流程。
+  auth_methods: [token]
 
-# 线上站点（Pages 域名）：OAuth 回调基址与「在站点中打开」链接都用它。
+# 线上站点（Pages 域名）：用于「在站点中打开」等链接。
 site_url: https://grphyblog.pages.dev
 display_url: https://grphyblog.pages.dev
 
-# simple = 改完即 commit 即发布（草稿与否只由 frontmatter 的 draft 决定，design §4）。
-# 不用 editorial/Workflow：那套要靠 Git Gateway + PR，与「GitHub OAuth 直连」的鉴权口径不符。
+# simple = 改完即 commit 即发布（草稿与否只由 frontmatter 的 draft 决定）。
 publish_mode: simple
 
-# 本地验证通道：本地起 git gateway 代理（`npx decap-server`）后，用本地 dev 站点地址访问
-# /admin/ 并带 `?local_backend=true`，即可对本地仓库读写、生成一次本地 commit 再 reset 丢弃。
-# 仅影响本地，线上不会被它绕过 OAuth（完整步骤见 doc/github-oauth-setup.md 末节）。
-local_backend: true
-
-# 预览/媒体 URL 前缀。⚠️ Decap 3.16 的 config schema 强制要求 media_folder 或 media_library
-# 之一（否则后台报 “config must have required property 'media_folder'” 直接起不来）。
-# 因此「禁上传」不能靠“省略 media_folder”实现，改为：
-#   ① cover 用 string 文本框（条目内不渲染上传/拖拽区，见下 collections）；
-#   ② media_folder 指向 public/uploads——受构建期守卫 scripts/check-image-sources.mjs 的
-#      R5 规则（public/ 下不得出现图片）监管：有人真去 Media 库上传，图片落 public/uploads，
-#      下一次 npm run build（Pages 的构建命令）即失败 → 传不进生产。这就是兜底。
+# 预览/媒体 URL 前缀（禁上传口径见顶部注释第 2/3 层）。
 media_folder: public/uploads
 public_folder: /uploads
 
 # -----------------------------------------------------------------------------
-# 内容模型：字段集合与 src/content/schemas.ts 的 strict schema **逐字对齐**，
+# 内容模型：字段与 src/content/schemas.ts 的 strict schema **逐字对齐**，
 # 多写一个键、少写一个键都会让下一次 `npm run build` 在 zod .strict() 上崩。
-# 由 tests/unit/decap-cms.test.ts 把这条对齐钉成断言（含「按 widget 造样本 frontmatter
+# 由 tests/unit/decap-cms.test.ts 钉成断言（含「按 widget 造样本 frontmatter
 # → 过真 schema」的往返用例）。
-# 条目标识（系列目录名 / 随笔文件名）走**路径**（path + meta.path 输入框），
-# 因此**不需要**额外的 slug / summary 字段——schema 里没有、也不许有。
-# Markdown 正文（手记 / 随笔内容）由 Decap 编辑器自带的 body 区承担，
-# 不是 field，因此不会进 frontmatter。
+# 条目标识（系列目录名 / 随笔文件名）走路径输入框，不需要额外 slug/summary 字段。
+# Markdown 正文（手记 / 随笔内容）由编辑器 body 区承担，不是 field，不进 frontmatter。
 # -----------------------------------------------------------------------------
 collections:
-  # ── 系列：src/content/series/<标识>/index.md（loader glob: '*/index.md'）──────
+  # ── 系列：src/content/series/<标识>/index.md ─────────────────────────────
   - name: series
     label: 系列
     label_singular: 系列条目
     folder: src/content/series
-    # 一个条目 = 一个目录里的 index.md，与 glob 一一对应。
+    # 一个条目 = 一个目录里的 index.md，与 Astro glob（*/index.md）一一对应。
     path: '{{slug}}/index'
-    # 只把「带 index.md 的目录」当条目：photos/ 资源夹与 photos.meta.json
-    # 因此在后台完全不出现（design §4：sidecar 与照片后台不编辑）。
-    # depth 取 2：Decap 各版本对「层数」的口径不一（有的数子目录层、有的数路径段），
-    # 2 同时覆盖 <标识>/index.md 这一形态；首次线上登录时若条目列表为空，
-    # 就把这里改 1 或 100 各试一次（doc/github-oauth-setup.md 第 5 节验收项）。
+    # 嵌套集合：条目列表按目录树展示；photos/ 资源夹里没有 index.md，不会被当成条目。
     nested:
-      index_file: index
       depth: 2
-    create: true
-    delete: true
-    edit: true
-    extension: md
-    format: frontmatter
-    slug_template: '{{fields.title}}'
-    # nested 条目必填：新建时由这里手填目录名，保证得到 ASCII 资源夹
-    # （中文标题直接当 slug 会被转写，资源夹名会变难认）。
+      summary: '{{title}}'
+      subfolders: true
+    # 告诉路径编辑器 index 文件名的主干是 index（<目录>/index.md）。
     meta:
       path:
+        index_file: index
         label: 系列目录名（英文小写 + 连字符，如 city-lights）
-        widget: string
+    create: true
+    delete: true
+    extension: md
+    format: yaml-frontmatter
+    slug: '{{fields.title}}'
     summary: '{{fields.title}}'
     fields:
       - name: title
@@ -120,9 +84,12 @@ collections:
 
       - name: date
         label: 日期
-        widget: date
-        # 与种子内容一致写成 YYYY-MM-DD（z.coerce.date 直接接受）。
-        date_format: YYYY-MM-DD
+        widget: datetime
+        # 只选日期、按 YYYY-MM-DD 落盘（与种子内容、z.coerce.date 口径一致）。
+        type: date
+        format: YYYY-MM-DD
+        # 避免浏览器时区把日期挪前/后一天（官方文档对 type: date 的明确提醒）。
+        picker_utc: true
 
       - name: cover
         label: 封面（只能选已入库照片，后台无上传口）
@@ -131,17 +98,15 @@ collections:
           填「相对本条目」的路径，例如 photos/night-01.webp。
           文件名请从 src/content/series/<本系列目录>/photos/ 里复制一份。
           照片只能由本地 `npm run import` 生成（压缩 + 缩略图 + EXIF sidecar），
-          后台既没有上传按钮，也不该出现没进 sidecar 的图片。
+          后台条目表单里没有上传按钮，也不该出现没进 sidecar 的图片。
 
       - name: tags
         label: 标签
         widget: list
         field:
-          label: 标签
           name: tag
+          label: 标签
           widget: string
-        # 下拉里带出本集合已有标签（同一份 list 字段名，纯 UI 便利，不落 frontmatter）。
-        populated_from: tags
 
       - name: order
         label: 排序权重（数字，越小越靠前）
@@ -155,12 +120,9 @@ collections:
         label: 草稿开关
         widget: boolean
         default: false
-        label_on: 草稿（已撤下）
-        label_off: 已发布
         hint: 打开 = 撤下（不进线上产物，等于下线按钮）；关闭 = 发布。
 
-  # ── 随笔：src/content/posts/<日期-标题>.md（loader glob: '*.md'，平铺不套目录）──
-  # 用 folder 而不是 files：files 类型要在配置里逐条点名，与「新增内容只加文件」的边界①冲突。
+  # ── 随笔：src/content/posts/<日期-标题>.md（平铺不套目录；插图夹与文件同名）──
   - name: posts
     label: 随笔
     label_singular: 随笔
@@ -168,21 +130,22 @@ collections:
     path: '{{slug}}'
     create: true
     delete: true
-    edit: true
     extension: md
-    format: frontmatter
-    slug_template: '{{fields.title}}'
+    format: yaml-frontmatter
+    slug: '{{fields.title}}'
     summary: '{{fields.title}}'
     fields:
       - name: title
         label: 标题
         widget: string
-        hint: 新建随笔时标题建议以 YYYY-MM-DD 开头（如 2026-10-01-autumn-light），这样生成的文件名与同名插图资源夹都能保持 ASCII；已有条目改名请连同 `npm run import -- --post <标识>` 的资源夹一起改。
+        hint: 新建随笔时标题建议以 YYYY-MM-DD 开头（如 2026-10-01-autumn-light），这样文件名与同名插图资源夹都能保持 ASCII；已有条目改名请连同 `npm run import -- --post <标识>` 的资源夹一起改。
 
       - name: date
         label: 日期
-        widget: date
-        date_format: YYYY-MM-DD
+        widget: datetime
+        type: date
+        format: YYYY-MM-DD
+        picker_utc: true
 
       - name: cover
         label: 封面（只能选已入库照片，后台无上传口）
@@ -190,38 +153,18 @@ collections:
         hint: |
           填「相对本条目」的路径，例如 photos/dawn-01.webp。
           随笔的插图资源夹与 .md 同名（src/content/posts/<日期-标题>/photos/），
-          由 `npm run import -- --post <日期-标题>` 生成；后台不能上传。
+          由 `npm run import -- --post <日期-标题>` 生成；后台条目表单不能上传。
 
       - name: tags
         label: 标签
         widget: list
         field:
-          label: 标签
           name: tag
+          label: 标签
           widget: string
-        populated_from: tags
 
       - name: draft
         label: 草稿开关
         widget: boolean
         default: false
-        label_on: 草稿（已撤下）
-        label_off: 已发布
         hint: 打开 = 撤下（不进线上产物）；关闭 = 发布。
-
-# -----------------------------------------------------------------------------
-# 可选：只读媒体夹（**未启用**，Decap 当前版本无「只列已入库照片、禁止上传」的
-# media_library 实现，启用下面的写法只会重新打开上传口）。留在这里，等确认某个
-# 版本/替代（如 Sveltia）真有只读模式时，再把 cover 从 string 换成 image 试一次：
-#
-# media_library:
-#   type: editorial
-#   config:
-#     folders:
-#       - public
-#
-# cover 字段届时相应改为：
-#   - { name: cover, label: 封面, widget: image, choose_url: false, media_library: { type: editorial } }
-#
-# 在确认之前，禁上传靠的是「无 media_folder + string widget + 构建期 check-images」这三层。
-# -----------------------------------------------------------------------------

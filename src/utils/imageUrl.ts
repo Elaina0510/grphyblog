@@ -12,11 +12,11 @@
 //   - 或 Astro image()/glob ?url 得到的 "/_astro/xxx.webp"；
 //   - 或已经是绝对的 http(s) 链接（原样返回）。
 //
-// ⚠️ 同步约定（decap-cms 任务 8）：/admin 后台（public/admin/）用的是 CDN 上的 Decap 脚本，
-//    运行时**import 不到本文件**，所以在两处重写了同一套规则：
-//      - public/admin/config.yml 的 `public_folder`（预览 URL 的 base）
-//      - public/admin/index.html 的 `resolvePreviewUrl()`（http(s)/data/blob 原样 + base 拼接）
-//    **改这里的基准规则（含 PUBLIC_IMAGE_BASE 口径）必须同步改那两处**，
+// ⚠️ 同步约定（decap-cms 任务 8，现引擎为 Sveltia）：/admin 后台（public/admin/）用的是 CDN
+//    上的 Sveltia 脚本，运行时**import 不到本文件**，预览 URL 的 base 规则在
+//      - public/admin/config.yml 的 `public_folder`
+//    处有一份对应口径（Decap 时代 index.html 里那份 resolvePreviewUrl 镜像已随引擎退役）。
+//    **改这里的基准规则（含 PUBLIC_IMAGE_BASE 口径）必须同步改 public_folder**，
 //    否则后台 Editor Preview 的图与线上图会走散（验收时人工比对一次预览图与线上图）。
 // =============================================================================
 
