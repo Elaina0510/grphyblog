@@ -191,10 +191,11 @@ describe('config.yml · 语法与 backend（任务 2）', () => {
       expect(CONFIG_TEXT).toMatch(/# TODO:.*client_id/);
       expect(CONFIG_TEXT).toMatch(/#\s*client_id:/);
     } else {
-      // 用户注册 OAuth App 后回填：必须是 40 位十六进制，且不能还是占位符
-      expect(String(filled), 'client_id 形状不对（GitHub OAuth App 是 40 位十六进制）').toMatch(
-        /^[0-9a-f]{40}$/i,
-      );
+      // 用户注册 OAuth App 后回填：旧版 40 位十六进制 或 新版 Iv/Ov 前缀 base62，且不能还是占位符
+      expect(
+        String(filled),
+        'client_id 形状不对（GitHub OAuth App：40 位十六进制 或 Iv/Ov 前缀）',
+      ).toMatch(/^([0-9a-f]{40}|(Iv|Ov)[A-Za-z0-9]+)$/i);
     }
     // 密钥红线：本目录会随站点公开，任何地方都不许出现 client_secret 赋值
     expect(CONFIG_TEXT).not.toMatch(/^\s*#?\s*client_secret\s*:\s*\S/m);

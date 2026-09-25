@@ -37,14 +37,17 @@
 1. 浏览器打开 **https://github.com/settings/developers**
    （路径就是：右上角头像 → **Settings** → 左侧最底下 **Developer settings** → **OAuth Apps**）
 2. 右上点 **New OAuth App**。
-3. 四个输入框按下面填，然后点 **Register application**：
+3. 按新版表单从上往下填，然后点 **Register application**：
 
    | 输入框 | 填什么 |
    | --- | --- |
    | **Application name** | `grphyblog admin`（随便认得出就行） |
    | **Homepage URL** | `https://grphyblog.pages.dev` |
    | **Application description**（可留空） | `个人摄影博客 /admin 后台登录用` |
-   | **Authorization callback URL** | `https://grphyblog.pages.dev/admin/` ⚠️ **结尾的斜杠要保留** |
+   | **Redirect URI**（在「Redirect URIs」区块里，就是老版的 "Authorization callback URL"） | `https://grphyblog.pages.dev/admin/` ⚠️ **结尾的斜杠要保留** |
+
+   > 新版表单还有三个勾选，按此设：**Allow wildcard matching 不勾**、**Enable Device Flow 不勾**、
+   > **Expire user access tokens 取消勾选**（静态站用长效 token 更省事，避免登录后要刷新）。
 
    > 为什么回调地址填 `/admin/`：这是 **implicit 流**（GitHub 直接把令牌塞在浏览器地址栏的
    > `#access_token=...` 片段里返回），它跟 Netlify 那套 `GitHub callback proxy` 不是同一路。

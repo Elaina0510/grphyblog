@@ -45,10 +45,10 @@ backend:
   branch: main
   # implicit 流：直接在 github.com 授权，token 从 URL fragment 回来，不需要后端代理。
   auth_type: github
-  # TODO: client_id 由 doc/github-oauth-setup.md 注册 OAuth App 后填入（去掉注释、替换尖括号）。
+  # client_id 已回填（OAuth App 注册步骤见 doc/github-oauth-setup.md）。
   #       只填 client_id；implicit 流**没有** client_secret，也**绝不**把 secret 写进本文件
   #       （本目录会随站点公开，任何 secret 都等于公开）。
-  # client_id: <GITHUB_OAUTH_CLIENT_ID>
+  client_id: Ov23liOrFaqmtuSi7Hbn
   commit_message: 'content(admin): update {{path}} via {{package_name}}'
 
 # 线上站点（Pages 域名）：OAuth 回调基址与「在站点中打开」链接都用它。
