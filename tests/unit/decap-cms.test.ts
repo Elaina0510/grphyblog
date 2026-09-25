@@ -330,9 +330,10 @@ function postsHasNoOrder(posts: CmsCollection): boolean {
 // 任务 6：照片禁上传。配置层能关到的程度 + 构建期兜底（scripts/check-image-sources.mjs）
 // =============================================================================
 describe('禁上传（任务 6）：配置层不给任何写媒体文件的落点', () => {
-  it('全站与 collection 两级都没有 media_folder', () => {
-    expect(everyKey(config)).not.toContain('media_folder');
-    expect(CONFIG_TEXT).not.toMatch(/^\s*media_folder\s*:/m);
+  it('media_folder 是 Decap 强制项，指向受守卫的 public/uploads（非内容 photos 目录）', () => {
+    expect(config.media_folder, 'Decap 3.16 要求 media_folder 才能启动').toBe('public/uploads');
+    expect(config.media_folder).not.toMatch(/photos/);
+    // 拦截「上传进生产」的是：cover 用 string widget（无条目内上传）+ 构建期守卫 R5（public/ 不得有图片）
   });
 
   it('cover 用 string widget（不渲染上传/拖拽区），且明确 hint 只能选已入库照片', () => {
@@ -364,9 +365,9 @@ describe('禁上传（任务 6）：配置层不给任何写媒体文件的落�
 // 任务 8：Editor Preview 与 imageUrl 的基准口径「互指」——只查注释与常量是否都还在
 // =============================================================================
 describe('Editor Preview 基准（任务 8）：三处互指注释不许走散', () => {
-  it('config.yml 的 public_folder 与 imageUrl 默认 base 同源（都是站点根）', () => {
-    expect(config.public_folder).toBe('/');
-    // imageUrl.ts 的默认回落同样是 '/'（见其 readEnvBase/joinBase），此处只断言 CMS 侧口径
+  it('public_folder 与 media_folder 前缀一致（/uploads）；内容图 URL 仍由 imageUrl 走同源根', () => {
+    expect(config.public_folder).toBe('/uploads');
+    // 内容封面 URL 由 index.html 内联 PUBLIC_FOLDER='/' + contentImages 处理，与上传媒体前缀是两回事
     expect(CONFIG_TEXT).toMatch(/imageUrl\.ts/);
   });
 

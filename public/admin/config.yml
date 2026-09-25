@@ -64,9 +64,15 @@ publish_mode: simple
 # 仅影响本地，线上不会被它绕过 OAuth（完整步骤见 doc/github-oauth-setup.md 末节）。
 local_backend: true
 
-# 预览用的 URL 基准（只读前缀，**不是** media_folder，不产生任何上传能力）。
-# 与 src/utils/imageUrl.ts 的默认 base（同源根 '/'）同口径。
-public_folder: /
+# 预览/媒体 URL 前缀。⚠️ Decap 3.16 的 config schema 强制要求 media_folder 或 media_library
+# 之一（否则后台报 “config must have required property 'media_folder'” 直接起不来）。
+# 因此「禁上传」不能靠“省略 media_folder”实现，改为：
+#   ① cover 用 string 文本框（条目内不渲染上传/拖拽区，见下 collections）；
+#   ② media_folder 指向 public/uploads——受构建期守卫 scripts/check-image-sources.mjs 的
+#      R5 规则（public/ 下不得出现图片）监管：有人真去 Media 库上传，图片落 public/uploads，
+#      下一次 npm run build（Pages 的构建命令）即失败 → 传不进生产。这就是兜底。
+media_folder: public/uploads
+public_folder: /uploads
 
 # -----------------------------------------------------------------------------
 # 内容模型：字段集合与 src/content/schemas.ts 的 strict schema **逐字对齐**，
@@ -140,7 +146,7 @@ collections:
       - name: order
         label: 排序权重（数字，越小越靠前）
         widget: number
-        valueType: int
+        value_type: int
         step: 1
         min: 0
         default: 1
