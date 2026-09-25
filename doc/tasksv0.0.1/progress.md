@@ -37,7 +37,13 @@
 - ⚠️ 当前工作区尚未 `git init`（project-scaffold 任务 8 处理）。
 - ✅ 已拍板（2026-09-24）：随笔插图与系列同走导入脚本（`--post` 模式，含 sidecar），解决 §4"脚本只写系列"与 §5"任意照片进灯箱"的矛盾；已注记到 designv0.0.1.md §4，import-photos 模块新增任务 8/13。
 - `raw/` 实测 5 张 jpg，与 import-photos 验证任务一致；`thumbs/` 已存在。种子内容改用手工压缩占位图（content-model 任务 7），正式产物由脚本回填。
-- ⚠️ 模块 11 任务 6：Decap"全局禁止上传"以版本实际能力为准，兜底加构建期检查——实施时若发现配置不可达，先回来更新本清单再动手。
+- ✅ 模块 11 任务 6 已落地（2026-09-25 实施记录）：Decap 3.16 **没有**「只列已入库照片、禁止上传」的
+  media_library 实现（只有 uploadcare / cloudinary 这类第三方上传口），所以"全局禁上传"做到三层：
+  ① `public/admin/config.yml` 全站与 collection 两级都**不设 `media_folder`**（上传没有落点）；
+  ② cover 字段用 `widget: string`（不渲染上传/拖拽区），只能填相对本条目的 `photos/xxx.webp`；
+  ③ 构建期兜底 `scripts/check-image-sources.mjs`（`npm run check-images`，并挂在 `prebuild` 上）：
+  出现「photos/ 之外的图片 / 未被 photos.meta.json 登记 / 落在 public/ 的图片」即构建失败。
+  剩余的不可本地证明项（后台界面是否还残留别的上传入口）→ 归 decap-cms 任务 10 线上人工验证。
 - ⚠️ HEIC 输入不进 v1（sharp 默认二进制不支持，import-photos 任务 1 已注明）；如需再评估编译依赖。
 - ✅ 已拍板（2026-09-24 编排）：照片落位约定统一到 content-model 已实现并已测的口径——展示图 `src/content/<集合>/<条目>/photos/<base>.webp`、缩略图同目录 `photos/<base>.thumb.webp`（非 import-photos.md 任务7 字面的 `images/`+`thumbnails/` 双目录）。原因：避免返工已验证的 contentImages/sidecar/种子内容，保持照片通道单一口径；此偏离可逆，若用户坚持双目录命名再统一回改。
 - ✅ 已拍板（2026-09-24 编排）：home-page 任务5 与 series-pages 任务2 对「系列张数共享工具函数」存在依赖倒挂（首页要用、定义却在系列页模块）。改由 home-page 先落地为 `src/utils/photoCount.ts`（纯函数、I/O 注入、sidecar 优先→缺 sidecar 兜底计数并构建期告警），series-pages 模块直接复用、不得重复实现。

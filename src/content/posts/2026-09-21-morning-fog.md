@@ -1,6 +1,6 @@
 ---
 title: 晨雾里的第一束光
-date: 2026-09-25
+date: 2026-09-21
 cover: photos/dawn-01.webp
 tags: [风光, 晨雾]
 draft: false

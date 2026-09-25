@@ -8,6 +8,10 @@
 //
 // 出口仍统一走 imageUrl()（边界③）：本模块只负责「相对内容路径 -> 构建 URL」，
 // base 前缀的语义完全交给 imageUrl，迁移图床时依旧只改一处。
+//
+// 与后台的关系（decap-cms 任务 8）：/admin 里 cover 存的就是本模块认得的「相对条目路径」
+// （photos/xxx.webp），但 CDN 上的 CMS 运行时 import 不到这个模块，只能按 imageUrl 的规则
+// 直接拼预览 URL（见 public/admin/index.html 与 src/utils/imageUrl.ts 的同步约定）。
 // =============================================================================
 
 import { imageUrl, type ImageUrlOptions } from './imageUrl';

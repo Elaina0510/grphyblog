@@ -54,7 +54,8 @@ npm install
 | 想做的事 | 命令 | 说明 |
 | --- | --- | --- |
 | 本地看网站 | `npm run dev` | 启动后终端会给出 `http://localhost:4321`，用浏览器打开即可；改文件后页面自动刷新。按 `Ctrl` + `C` 停止。 |
-| 正式构建 | `npm run build` | 产物输出到 `dist/`（该目录不进 Git）。 |
+| 正式构建 | `npm run build` | 产物输出到 `dist/`（该目录不进 Git）。构建前会自动跑一次图片来源检查（`prebuild`）。 |
+| 查照片来源 | `npm run check-images` | 确认 `src/content` 里每张图片都出自 `npm run import`（有 EXIF sidecar 登记），`public/` 里也没有混进图片。发现"别处来的图"就报错退出，`npm run build` 也会因此中断。见下面第 6 节。 |
 | 预览构建结果 | `npm run preview` | 先在浏览器看"上线前"的最终静态产物。 |
 | 导入新照片 | `npm run import -- --series <系列标识>` | 把相机导出的原图丢进 `raw/` 后执行，脚本自动压图 + 缩略图 + 读 EXIF 并写入内容夹。**原图不会被移动或删除。** 详见下面第 3 节。 |
 | 跑单元测试 | `npm run test:run` | Vitest，用例在 `tests/unit/`。 |
@@ -267,4 +268,59 @@ git push
   更多对号入座看 `doc/account-setup.md` 第 7 节排错表。
 - 域名：v1 就用 `*.pages.dev` 免费子域。要换/加自定义域名，日后在 Pages 项目设置里绑，
   并把 `astro.config.mjs` 里的 `site` 改成新域名再重新构建（见 5.1 第 3 步的域名口径）。
+
+## 6. `/admin` 内容后台（只改文字，不传照片）
+
+线上地址 **`https://grphyblog.pages.dev/admin/`**，用 GitHub 账号登录（design §3：GitHub OAuth implicit 流，
+不引 Netlify 之类的第三方代理；仓库 Public，真正的门槛是"这个账号对仓库有写权限"）。
+
+**后台能做的四件事**（design §4「仅文字操作」）：
+
+1. 新建系列条目 / 随笔，写标题、日期、标签；
+2. 写手记与正文（Markdown 正文区，进 `.md` 的 body，不进 frontmatter）；
+3. 调 **排序权重**（数字）与 **草稿开关**（开=撤下、关=发布，等价于上线/下线按钮）；
+4. 从**已入库照片**里选封面：填相对本条目的路径，如 `photos/night-01.webp`。
+
+**后台做不到的一件事：传照片。** 全站照片只有一个通道——本地 `npm run import`
+（压缩 + 缩略图 + 读 EXIF 写 `photos.meta.json`）。三层保证：
+
+- `public/admin/config.yml` 里**没有任何 `media_folder`**（上传没有落点），封面字段是可输入的文本框而非上传区；
+- `photos/` 与 `photos.meta.json` 在后台不作为可编辑条目出现（系列 collection 用 `nested.index_file` 只认 `index.md`）；
+- 兜底：`npm run check-images`（挂在 `prebuild` 上，`npm run build` 必然经过）——
+  只要出现"没被 sidecar 登记"或"躺在 `photos/` 之外 / `public/` 里"的图片，构建立即失败。
+
+相关文件只有三个（Decap 走 CDN，**不是 npm 依赖**，构建不需要联网）：
+
+| 文件 | 作用 |
+| --- | --- |
+| `public/admin/index.html` | 后台页面：引入**锁定版本** `decap-cms@3.16.3` + `noindex` 防收录 + Editor Preview 模板 |
+| `public/admin/config.yml` | 后台配置：backend / 站点域名 / series 与 posts 两个 collection 的字段 |
+| `scripts/check-image-sources.mjs` | 照片来源兜底检查（上面第 3 层） |
+
+### 6.1 上线后台只需做一次（约 5~8 分钟，全程点网页）
+
+**照 `doc/github-oauth-setup.md` 做**：在 GitHub 注册一个 OAuth App（Homepage 与
+Authorization callback URL 都填本站 `/admin/`），拿到 **`client_id`** 后填进
+`public/admin/config.yml` 里 `auth_type: github` 下面那一行（文件里有 `# TODO` 标着），
+push 之后 `/admin/` 就会出现 "Login with GitHub"。
+⚠️ 那一步用不到 `client_secret`，也**绝不能**把任何 secret 写进仓库（该目录会随站点公开）。
+
+### 6.2 日常：文字在后台改，照片在本地导
+
+```bash
+npm run import -- --series <系列标识>   # 照片：只在本地跑，跑完 git push 上线
+# 文字：打开 https://grphyblog.pages.dev/admin/ → 登录 → 改 → Publish（自动 commit + 自动重建）
+```
+
+保存成功时 GitHub 会多出一条 commit，Cloudflare Pages 检测到就自动重新构建，1~2 分钟后线上生效。
+改坏了就按 `doc/account-setup.md` 第 6 节回滚（后台的改动本质就是一次普通提交，回滚方式完全一样）。
+
+### 6.3 后台的两条已知边界（不是 bug，是取舍）
+
+- **本地 `npm run dev` 打开 `/admin/` 只能看界面，不能保存**：真实读写需要 GitHub OAuth 或本机 git gateway
+  代理（`npx decap-server`），离线自检请改用 `npm run test:run`（含字段与 schema 对齐、无上传落点等断言）。
+- **后台预览里的封面图在线上多半显示不出来**：Astro 构建会把 `src/content` 里的图交给 Vite 资源管线、
+  输出带 hash 的 `/_astro/xxx.webp`，CDN 上的 CMS 拿不到那份映射；本地 `astro dev` 下预览能看到真图。
+  这只影响"预览好不好看"，保存下来的 `cover` 仍是相对路径原文，前台取图走 `src/utils/contentImages.ts`，
+  与后台无关。图片 URL 基准规则的同步约定见 `src/utils/imageUrl.ts` 与 `public/admin/config.yml` 头部注释。
 

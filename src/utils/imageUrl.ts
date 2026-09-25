@@ -11,6 +11,13 @@
 //   - 内容相对路径（经 contentImages 解析成构建期可服务 URL 后）；
 //   - 或 Astro image()/glob ?url 得到的 "/_astro/xxx.webp"；
 //   - 或已经是绝对的 http(s) 链接（原样返回）。
+//
+// ⚠️ 同步约定（decap-cms 任务 8）：/admin 后台（public/admin/）用的是 CDN 上的 Decap 脚本，
+//    运行时**import 不到本文件**，所以在两处重写了同一套规则：
+//      - public/admin/config.yml 的 `public_folder`（预览 URL 的 base）
+//      - public/admin/index.html 的 `resolvePreviewUrl()`（http(s)/data/blob 原样 + base 拼接）
+//    **改这里的基准规则（含 PUBLIC_IMAGE_BASE 口径）必须同步改那两处**，
+//    否则后台 Editor Preview 的图与线上图会走散（验收时人工比对一次预览图与线上图）。
 // =============================================================================
 
 /** 绝对 URL：以 http:// 或 https:// 开头（大小写不敏感）。 */
