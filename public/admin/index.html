@@ -16,7 +16,7 @@
       停维备案（design §3）：若 Decap 停维，换 Sveltia CMS 只改本目录（本文件的 script 标签
       + config.yml 个别键名）；内容仓库与 Astro 构建不受波及。详见 config.yml 顶部注释。
     -->
-    <script src="https://cdn.jsdelivr.net/npm/decap-cms-app@3.16.3/dist/decap-cms-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/decap-cms@3.16.3/dist/decap-cms.js"></script>
     <noscript>内容后台需要 JavaScript：请在支持 JS 的浏览器里打开 /admin/。</noscript>
 
     <!--
@@ -44,7 +44,7 @@
       (function () {
         'use strict';
 
-        var cms = window.DecapCMS;
+        var cms = window.DecapCms || window.CMS;
         if (!cms) return;
 
         /** 与 config.yml 的 public_folder 同值；改一处必须改两处。 */
@@ -145,18 +145,9 @@
           }
         }
 
-        // 注册完自定义预览后再 init（默认从本目录读 config.yml）；Decap 的 init 幂等，
-        // 自动初始化不会重复挂载。万一 init 抛错，至少给页面留一行可读提示。
-        try {
-          if (typeof cms.init === 'function') cms.init();
-        } catch (err) {
-          document.body.insertAdjacentHTML(
-            'afterbegin',
-            '<p style="font:14px/1.6 system-ui;padding:1rem;margin:0">后台初始化失败：' +
-              String(err && err.message ? err.message : err) +
-              '（文字内容与线上站点未受影响；请把这条提示贴回给维护者）。</p>',
-          );
-        }
+        // 自包含的 decap-cms.js 加载时已自动读取同目录 config.yml 完成初始化，
+        // 这里不再手动 cms.init()（避免二次初始化）。上面的 registerPreviewTemplate 为
+        // best-effort：在自动初始化之后注册，可能只影响后续打开的条目预览，失败也不影响编辑与保存。
       })();
     </script>
   </body>

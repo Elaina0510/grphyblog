@@ -146,7 +146,7 @@ describe('public/admin · 文件与 Decap 版本锁定（任务 1）', () => {
     expect(cms.length, 'index.html 没引入 decap-cms 脚本').toBeGreaterThan(0);
     for (const url of cms) {
       expect(url, `CDN 地址未锁版本：${url}`).toMatch(
-        /decap-cms-app@\d+\.\d+\.\d+\/dist\/decap-cms-app\.js$/,
+        /decap-cms@\d+\.\d+\.\d+\/dist\/decap-cms\.js$/,
       );
       expect(url, `CDN 地址缺 /dist/ 会 404：${url}`).toContain('/dist/');
       expect(url).not.toMatch(/\/latest|@next|@\^|@~|@'\+/);
