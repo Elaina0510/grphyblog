@@ -18,7 +18,7 @@
 | 8 | 关于页与 404 | [about-404.md](about-404.md) | 4 | 4 | [x] |
 | 9 | 灯箱 | [lightbox.md](lightbox.md) | 2,4,6 | 4/5 | [x] |
 | 10 | 部署上线 | [deployment.md](deployment.md) | 1–8 可构建 | 2 | [x] |
-| 11 | 内容后台（Sveltia，原 Decap） | [decap-cms.md](decap-cms.md) | 2,10 | 3 | [ ] |
+| 11 | 内容后台（Sveltia，原 Decap） | [decap-cms.md](decap-cms.md) | 2,10 | 3 | [x] |
 | 12 | 性能与验收 | [performance-acceptance.md](performance-acceptance.md) | 全部 | 5 | [ ] |
 
 **关键路径**：1→2→3（照片通道）与 1→4→5/6/7/8（页面通道）可并行；10 需页面可构建；11 的线上验证需 10 的域名；12 收尾。
@@ -27,7 +27,7 @@
 
 - [x] 里程碑 1 骨架+导入跑通 = 模块 1,2,3
 - [x] 里程碑 2 首次上线 = 模块 10（前 8 模块可构建为前置）
-- [ ] 里程碑 3 后台文字闭环 = 模块 11
+- [x] 里程碑 3 后台文字闭环 = 模块 11
 - [x] 里程碑 4 视觉+灯箱（首页视觉稿已完成，剩实施与打磨）= 模块 4,5,6,7,8,9
 - [ ] 里程碑 5 双端验收 = 模块 12
 
@@ -49,6 +49,10 @@
   ③ 构建期兜底 `scripts/check-image-sources.mjs`（`npm run check-images`，挂在 `prebuild`）R5：
   `public/` 下一出现图片即构建失败 → 后台即便被绕过也传不进生产。
   剩余不可本地证明项（后台界面别的上传入口、真实登录/commit）→ 归任务 10 线上人工验收（需用户令牌）。
+- ✅ 模块 11 门禁 D 线上验收通过（2026-09-26）：用户本人用访问令牌登录 Sveltia、改 `city-lights` 文字并保存 →
+  仓库出现 commit `05193e4`（作者 Elaina0510，仅改 `src/content/series/city-lights/index.md` 的 frontmatter：
+  标题 + tags 由内联式改块式，值不变），`--diff-filter=A` 无任何新增图片/二进制 → 登录→编辑→自动 commit→重建 全链路通，
+  「禁上传」边界实测成立；条目在 `city-lights/index` 嵌套路径被正确识别（photos/ 未进编辑口）。模块 11 / 里程碑 3 达成。
 - ⚠️ HEIC 输入不进 v1（sharp 默认二进制不支持，import-photos 任务 1 已注明）；如需再评估编译依赖。
 - ✅ 已拍板（2026-09-24 编排）：照片落位约定统一到 content-model 已实现并已测的口径——展示图 `src/content/<集合>/<条目>/photos/<base>.webp`、缩略图同目录 `photos/<base>.thumb.webp`（非 import-photos.md 任务7 字面的 `images/`+`thumbnails/` 双目录）。原因：避免返工已验证的 contentImages/sidecar/种子内容，保持照片通道单一口径；此偏离可逆，若用户坚持双目录命名再统一回改。
 - ✅ 已拍板（2026-09-24 编排）：home-page 任务5 与 series-pages 任务2 对「系列张数共享工具函数」存在依赖倒挂（首页要用、定义却在系列页模块）。改由 home-page 先落地为 `src/utils/photoCount.ts`（纯函数、I/O 注入、sidecar 优先→缺 sidecar 兜底计数并构建期告警），series-pages 模块直接复用、不得重复实现。
