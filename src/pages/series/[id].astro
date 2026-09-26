@@ -306,22 +306,19 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
         plates.forEach((el, i) => {
           if (i >= initial) el.setAttribute('data-flow-hidden', '');
         });
-        let shown = initial;
-        const sentinel = document.createElement('div');
-        sentinel.setAttribute('aria-hidden', 'true');
-        grid.appendChild(sentinel);
-        const reveal = () => {
-          for (let k = 0; k < chunk && shown < plates.length; k += 1, shown += 1) {
-            plates[shown].removeAttribute('data-flow-hidden');
-          }
-          if (shown >= plates.length) io.disconnect();
-        };
+        let shown = Math.min(initial, plates.length);
+        // 观察「当前最后一张可见图版」（真图版有面积、IO 稳定触发；空 sentinel 在文档末不判相交）。
         const io = new IntersectionObserver(
-          (entries) => entries.some((e) => e.isIntersecting) && reveal(),
+          (entries) => {
+            if (!entries.some((e) => e.isIntersecting)) return;
+            io.disconnect();
+            const until = Math.min(shown + chunk, plates.length);
+            for (; shown < until; shown += 1) plates[shown].removeAttribute('data-flow-hidden');
+            if (shown < plates.length) io.observe(plates[shown - 1]);
+          },
           { rootMargin: '200px' },
         );
-        io.observe(sentinel);
-        reveal();
+        if (shown < plates.length) io.observe(plates[shown - 1]);
       }
     }
   </script>
@@ -362,8 +359,10 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
       gap: var(--gap-duo);
     }
   }
-  /* JS 现出态：被脚本临时隐藏的图版不占交互（无 JS 时该属性不会被加，内容全直出）。 */
-  .plate[data-flow-hidden] {
+  /* JS 现出态：被脚本临时隐藏的图版不占交互（无 JS 时该属性不会被加，内容全直出）。
+     .plate 来自子组件 PhotoPlate（自带作用域），页面作用域选择器命中不了 → 必须 :global 穿透，
+     否则 data-flow-hidden 不生效、分批形同虚设（全部图版常驻占位）。 */
+  :global(.plate[data-flow-hidden]) {
     display: none;
   }
 

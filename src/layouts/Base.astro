@@ -137,7 +137,10 @@ const {
             io.unobserve(el);
           }
         },
-        { threshold: 0.12 },
+        // threshold 0（非某比例）：分批的 .flow-grid 可高达视口的十余倍，任何 >0 的比例阈值
+        // 都无法满足 → 永不加 is-in → 整块 opacity:0 藏起来、且祖先 clip-path 让子图版的
+        // IntersectionObserver 判为不相交（分批追加随之失效）。首像素进视口即揭开最稳妥。
+        { threshold: 0 },
       );
       nodes.forEach((el) => io.observe(el));
     }
