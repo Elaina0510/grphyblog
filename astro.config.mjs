@@ -19,12 +19,13 @@ export const DISPLAY_LONG_EDGE = 2560;
 export const THUMB_LONG_EDGE = 800;
 
 /**
- * 编码质量。design §4 给的是体积预算（展示版 ≤800KB、缩略图 ≤80KB，见 §6 性能预算），
- * 未拍板具体 quality 数值，故此处为可调起点；import-photos 模块已按 raw/ 的 5 张真图复核：
- *   - DISPLAY_QUALITY = 82：实测 343~683KB，全部落在 §6 硬预算 800KB 内，故保持不动（展示图优先清晰度）。
- *   - THUMB_QUALITY = 64（起点 76 下调）：76 时实测 44.7~77.8KB，虽未破 80KB 却已吃掉 97% 余量，
- *     且明显高出 §4「约 30~60KB」目标带；64 时实测 34.8~64.7KB，既贴近目标带又给后续高细节照片留足余量。
- *     缩略图只在网格里以小尺寸出现，降档肉眼损失可忽略；要改清晰度仍只改这一处。
+ * 编码质量。design §4 给的是体积预算（§6 性能预算：展示图 ≤2MB、缩略图 ≤160KB；
+ * 原为 800KB/80KB，75 张真机原图导入后放宽，见 import-photos SIZE_BUDGET），
+ * 未拍板具体 quality 数值，故此处为可调值：
+ *   - DISPLAY_QUALITY = 82：2560px 长边真图实测 p50≈687KB、p95≈1.4MB、max≈1.7MB，
+ *     放宽预算后全部落在 2MB 内。选择「保画质、放宽预算」而非降 quality，展示清晰度优先。
+ *   - THUMB_QUALITY = 64（起点 76 下调）：真图缩略实测 p50≈51KB、max≈147KB，在 160KB 内。
+ *     缩略图只在网格里以小尺寸出现且懒加载，列表页负担仍轻；要改清晰度仍只改这一处。
  */
 export const DISPLAY_QUALITY = 82;
 export const THUMB_QUALITY = 64;

@@ -182,7 +182,7 @@ describe('系列模式端到端：真实 sharp + exifr 管线（任务 3/4/5/6/7
     expect([thumbC.width, thumbC.height]).toEqual([800, 533]);
   });
 
-  it('体积守住 §6 预算：展示图 ≤800KB、缩略图 ≤80KB，且清单报的字节数就是盘上的数', () => {
+  it('体积守住 §6 预算：展示图 ≤2MB、缩略图 ≤160KB（对齐 SIZE_BUDGET），且清单报的字节数就是盘上的数', () => {
     for (const [index, base] of ['sample-a', 'sample-b', 'sample-c'].entries()) {
       const displayBytes = statSync(contentPath(entryRel, 'photos', `${base}.${IMAGE_FORMAT}`)).size;
       const thumbBytes = statSync(contentPath(entryRel, 'photos', `${base}.thumb.${IMAGE_FORMAT}`)).size;

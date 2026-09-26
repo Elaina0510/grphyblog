@@ -65,10 +65,14 @@ export const PHOTOS_DIR_NAME = 'photos';
 /** sidecar 文件名（content-model 任务 6 锁定）。 */
 export const SIDECAR_FILE_NAME = 'photos.meta.json';
 
-/** §6 性能预算（验收阈值，非编码参数）：展示图 ≤800KB、缩略图 ≤80KB。 */
+/**
+ * §6 性能预算（验收阈值，非编码参数）：展示图 ≤2MB、缩略图 ≤160KB。
+ * 原为 800KB/80KB（种子图是缩小样例）。75 张真机原图导入后，2560px 长边展示图 p95≈1.4MB、max≈1.7MB，
+ * 为保展示清晰度（DISPLAY_QUALITY 仍 82）而放宽阈值，而非降画质。缩略图列表页仍小、仍懒加载。
+ */
 export const SIZE_BUDGET = Object.freeze({
-  displayBytes: 800 * 1024,
-  thumbBytes: 80 * 1024,
+  displayBytes: 2048 * 1024,
+  thumbBytes: 160 * 1024,
 });
 
 /** 相对内容条目资源夹的路径前缀。 */

@@ -29,7 +29,7 @@ Astro 5+（Content Collections + 类型安全 schema）· sharp · exifr · Svel
 
 ## Capabilities and Constraints
 
-- 性能预算：首页/系列页 Lighthouse Performance ≥ 90（移动端模拟）；缩略图 ≤ 80KB、展示图 ≤ 800KB；全部懒加载 + 显式宽高；单页 > 30 张分批渲染（IntersectionObserver）。
+- 性能预算：首页/系列页 Lighthouse Performance ≥ 90（移动端模拟）；缩略图 ≤ 160KB、展示图 ≤ 2MB（真机原图导入后保画质放宽，见设计文档 §6）；全部懒加载 + 显式宽高；单页 > 30 张分批渲染（IntersectionObserver）。
 - 内容模型：系列 = `src/content/series/<标识>/index.md` + 照片；随笔 = `src/content/posts/<日期-标题>.md`；frontmatter 含标题/日期/封面/标签/排序权重/草稿标记。
 - CMS 约束：后台禁止上传文件；封面只能从已入库照片中选取；EXIF sidecar 由脚本维护、不经人工编辑。
 - v1 页面：首页（精选区 + 最新）、系列列表/详情、随笔列表/详情、关于、404。

@@ -18,7 +18,7 @@
  *     字族栈定义在 global.css 的 --font-serif / --font-sans（含 Noto Serif SC /
  *     Source Han Serif SC / Songti SC / STSong / SimSun 等逐级回退）。
  *     原因：思源全家桶任何一档单文件都在 1.4MB 量级、分片版每页仍要拉十几档
- *     （约 350~700KB），与 §6「移动端 Lighthouse ≥90 + 展示图 ≤800KB/张」的
+ *     （约 350~700KB），与 §6「移动端 Lighthouse ≥90、单页传输尽量小」的
  *     预算正面冲突。降级带来的跨端字形差异已在 DESIGN.md §3 与自检报告中登记，
  *     升级路径（自建 @font-face + 只改一个字族 token）同样写在那里。
  *

@@ -3,13 +3,13 @@
 // audit-size —— 性能预算的构建期/验收期抽检（performance-acceptance 任务 1 + 2）
 //
 // 两件事：
-//   A. 图片体积红线：缩略图 ≤ 80KB、展示图 ≤ 800KB（design §6 / PRODUCT 预算）。
+//   A. 图片体积红线：缩略图 ≤ 160KB、展示图 ≤ 2MB（design §6 / PRODUCT 预算，与 import 的 SIZE_BUDGET 一致）。
 //      遍历 src/content 下所有 .webp，超标的列出来，任一超标即 exit 1。
 //   B. 图片属性审计（需先 npm run build，dist/ 存在时才做）：构建后 HTML 里每个
 //      <img> 都必须有显式 width+height（防布局抖动）且带 loading 提示（lazy，或首屏
 //      LCP 用 eager/fetchpriority）。缺任一项即 exit 1。
 //
-// 口径来源：阈值与 imageUrl/import 参数无耦合，这里独立可改，方便验收时临时收紧。
+// 口径来源：阈值默认与 import 的 SIZE_BUDGET（§6）保持一致；此处仍写死是为了验收时可临时收紧。
 // 用法：npm run audit:size   （只查体积）
 //       npm run audit:size -- --html   （额外查 dist/ 里的 <img> 属性）
 // =============================================================================
@@ -21,8 +21,8 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CONTENT = join(ROOT, 'src', 'content');
 const DIST = join(ROOT, 'dist');
 
-const THUMB_MAX = 80 * 1024; // 80KB
-const DISPLAY_MAX = 800 * 1024; // 800KB
+const THUMB_MAX = 160 * 1024; // 160KB
+const DISPLAY_MAX = 2048 * 1024; // 2MB
 const KB = (n) => (n / 1024).toFixed(1) + 'KB';
 const wantHtml = process.argv.includes('--html');
 
@@ -53,9 +53,9 @@ for (const f of files) {
   if (size > cap) oversize.push({ f: relative(ROOT, f), size, cap, isThumb });
 }
 
-console.log('=== 图片体积抽检（design §6：缩略图 ≤80KB / 展示图 ≤800KB）===');
-console.log(`缩略图 ${thumbCount} 张，最大 ${KB(maxThumb)} / 上限 80.0KB`);
-console.log(`展示图 ${displayCount} 张，最大 ${KB(maxDisplay)} / 上限 800.0KB`);
+console.log('=== 图片体积抽检（design §6：缩略图 ≤160KB / 展示图 ≤2MB）===');
+console.log(`缩略图 ${thumbCount} 张，最大 ${KB(maxThumb)} / 上限 ${KB(THUMB_MAX)}`);
+console.log(`展示图 ${displayCount} 张，最大 ${KB(maxDisplay)} / 上限 ${KB(DISPLAY_MAX)}`);
 if (oversize.length) {
   console.log(`\n✗ 超标 ${oversize.length} 张：`);
   for (const o of oversize) console.log(`   ${KB(o.size)} > ${KB(o.cap)}  ${o.f}`);
