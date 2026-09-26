@@ -11,6 +11,7 @@
     "dev": "astro dev",
     "prebuild": "node scripts/check-image-sources.mjs --quiet",
     "check-images": "node scripts/check-image-sources.mjs",
+    "audit:size": "node scripts/audit-size.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
