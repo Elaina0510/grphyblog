@@ -1,5 +1,5 @@
 ---
-title: 夜光 · 城市--广州
+title: 夜光 · 城市
 date: 2026-09-20
 cover: photos/night-01.webp
 tags:
