@@ -20,6 +20,7 @@
 - [x] 1. 体积抽检脚本：新增 `scripts/audit-size.mjs` + `npm run audit:size`。§6 放宽后阈值 展示 ≤2MB / 缩略 ≤160KB；含 `street-notes` 75 张真图后，最大展示图 ≈1.7MB、最大缩略图 ≈147KB，全部在预算内。
 - [x] 2. 图片属性审计：`npm run audit:size -- --html` 扫描 dist 全部 HTML，16 个 `<img>` 全部有显式 width/height + loading 提示，0 违规。
 - [x] 9. 仓库体积基线：写入 `doc/repo-size-log.md`（工作树≈12MB / `.git`≈9.4MB / dist≈3MB；~1GB 触发线 → R2 迁移〔预案A〕/ 孤儿分支重建〔预案B〕）。
+- [x] 8a. 可访问性 AI 预检（能自动化的部分）：**键盘-only 灯箱流程**既有 e2e 已覆盖并通过（`lightbox.spec.ts` ⑦：Tab 到图版→Enter 开→方向键切→Esc 关、焦点回落图版；焦点圈闭不出框、按钮全有 aria-label、aria-modal/aria-live 齐）。**对比度实测**（WCAG 相对亮度比）：墨/纸 **13.7:1 AAA**、墨次级(微标签)/纸 6.4:1 AA、朱砂/纸 5.9:1 AA、纸/夜底 15.7:1 AAA；**唯一偏弱**＝`--ink-mute #85806f`/纸 **3.49:1**（仅达大字 AA，正文级不到 4.5）——它只用于最弱批注，真机目测时重点看这一处。屏幕阅读器朗读帧号/EXIF 仍需你本人实听（见下 8）。
 
 **部分证（逻辑已测，运行时待真实数据）**
 
