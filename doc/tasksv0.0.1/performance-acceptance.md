@@ -18,7 +18,7 @@
 **部分证（逻辑已测，运行时待真实数据）**
 
 - [~] 3. 分批渲染：判定+批次算术由 `tests/unit/paginate-flow.test.ts` 覆盖（>30 触发、首屏 30、每批 20）。**运行时 IO 追加**当前种子全 <30 帧，未触发；需真实 >30 张系列（与任务 5 一并做）。
-- [~] 4. Lighthouse（移动端模拟）：本地无 lighthouse 包且 npm 代理被阻断，改用 Playwright 移动模拟 + 4G 节流实测 Core Web Vitals 作代理指标——首页/系列/随笔/关于：**CLS 0、LCP 0.6–1.4s、单页传输 38–91KB**，字体已子集化（最大 21KB，非 1.44MB 全量）。**官方 Performance 分值 ≥90 需在你自己的 Chrome 里跑**（见下）。
+- [x] 4. Lighthouse（移动端模拟）：**达标**。当前版 Lighthouse 无头跑线上两页 → 首页 Performance **93**、系列详情页 **100**（TBT 0–62ms、CLS 0、LCP≈1.2s、字体已子集化最大 21KB）。用户 PageSpeed Insights（服务器端当前版 Lighthouse）复核：系列页 **100**、首页 **90**，两页均 ≥90。（早前 Chrome DevTools 里量到系列 79 系 DevTools 内置 Lighthouse 版本偏旧 + 首次冷加载节流的偶发低分，当前版 Lighthouse 与 PSI 均不可复现。）
 
 **已由门禁 D 顺带证明**
 
@@ -26,7 +26,6 @@
 
 **需你本人（真实浏览器 / 真机 / 真实照片，AI 无法代跑）**
 
-- [ ] 4b. Lighthouse 官方分：Chrome DevTools → Lighthouse → 勾选 Mobile、Performance，跑首页 `/` 与 `/series/city-lights/`，两项 Performance ≥90。
 - [ ] 5. 照片流程演练 A：真拍/取一批 >30 张图 → 丢 `raw/` → `npm run import -- --series <标识>` → 本地预览 → `/admin` 去掉 draft → push → 线上可见（顺带触发任务 3 的分批 IO）。
 - [ ] 7. 手机端真机：灯箱手势切帧、View Transition 形变、双列缩略图、系统"减弱动效"开关各过一遍。
 - [ ] 8. 可访问性：键盘-only 走全站（Tab/Enter/Esc 开关灯箱）、屏幕阅读器读帧号/EXIF、纸白底墨字对比度目测。
@@ -34,5 +33,5 @@
 ## 验收标准
 
 - [x] §6 可本地量化的预算项通过（图片体积、显式宽高+懒加载、传输体积、CLS）。
-- [ ] §6 Lighthouse 官方 ≥90（待你本机跑）。
+- [x] §6 Lighthouse 官方 ≥90：首页 90–93 / 系列详情页 100（当前版 Lighthouse + PageSpeed Insights 双测）。
 - [ ] 用户本人独立完成演练 A + B（B 已过；A 待做）。
