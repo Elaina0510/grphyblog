@@ -478,7 +478,13 @@ for (const entry of ENTRIES) {
         expect(Number.isInteger(item.index), `index 不是整数：${item.index}`).toBe(true);
         expect(item.index, `index 越界：${item.index}`).toBeGreaterThanOrEqual(0);
         expect(item.index).toBeLessThan(frames.length);
-        expect(basename(item.src)).toBe(basename(frames[item.index].src));
+        // 图版挂的是缩略版（系列照片流内嵌 thumb）还是展示图（首页/随笔）都可能，而岛里 frame.src 恒为展示图；
+        // 二者与 plate 同源同解析 → 精确等值：plate.src 命中该帧的 src 或 thumb 任一即为「同一张、同源」。
+        const fr = frames[item.index];
+        expect(
+          item.src === fr.src || item.src === fr.thumb,
+          `图版 ${item.index} 的 src 既不是该帧展示图也不是其缩略图`,
+        ).toBe(true);
         indexes.push(item.index);
       }
       // 每帧都有图版可对上（首页开场图与精选首图共享索引，允许重复）

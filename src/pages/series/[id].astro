@@ -235,7 +235,9 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     ) : null
   }
 
-  <!-- ④ 照片流：按 sidecar 顺序（帧号连续，灯箱接线）+ frames JSON 岛 + >30 IO 追加 -->
+  <!-- ④ 照片流：按 sidecar 顺序（帧号连续，灯箱接线）+ frames JSON 岛 + >30 IO 追加
+       内嵌图版走 800px 缩略版（显示宽仅 ~531px，省 ~7-10× 传输；封面满版跨页仍用 2560 大图）；
+       点开灯箱取 frames 岛里的 display 大图，全屏清晰度不变。 -->
   {
     total > 0 ? (
       <div class="wrap">
@@ -254,9 +256,9 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
           >
             {flow.map((f) => (
               <PhotoPlate
-                src={f.src}
-                width={f.width}
-                height={f.height}
+                src={f.thumb}
+                width={f.thumbWidth}
+                height={f.thumbHeight}
                 alt={f.alt}
                 current={f.index + 1}
                 total={total}
