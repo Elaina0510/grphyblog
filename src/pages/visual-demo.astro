@@ -84,7 +84,7 @@ const scale: Array<{ cls: string; name: string; value: string; use: string }> = 
         data-frame="0"
       >
         <span class="stamp" aria-hidden="true">精选<br />帧</span>
-        <ExifCard title="逢简 · 伞与幡" exif={portrait.exif} />
+        <ExifCard slot="caption" title="逢简 · 伞与幡" exif={portrait.exif} />
       </PhotoPlate>
     </section>
   </div>
@@ -108,7 +108,7 @@ const scale: Array<{ cls: string; name: string; value: string; use: string }> = 
         total={photos.length}
         data-frame="1"
       >
-        <ExifCard title="逢简 · 灯笼街" exif={second.exif} />
+        <ExifCard slot="caption" title="逢简 · 灯笼街" exif={second.exif} />
       </PhotoPlate>
 
       <div class="duo">
@@ -139,6 +139,7 @@ const scale: Array<{ cls: string; name: string; value: string; use: string }> = 
             data-frame="3"
           >
             <ExifCard
+              slot="caption"
               title="幌子与荫 · 布幡街（快门与 ISO 为占位）"
               exif={{
                 camera: fourth.exif.camera,
@@ -183,7 +184,7 @@ const scale: Array<{ cls: string; name: string; value: string; use: string }> = 
           total={photos.length}
           data-frame="4"
         >
-          <ExifCard title="只有机型" exif={{ camera: portrait.exif.camera, aperture: null, iso: undefined }} />
+          <ExifCard slot="caption" title="只有机型" exif={{ camera: portrait.exif.camera, aperture: null, iso: undefined }} />
         </PhotoPlate>
 
         <PhotoPlate
@@ -193,7 +194,7 @@ const scale: Array<{ cls: string; name: string; value: string; use: string }> = 
           alt="灯笼街缩略图：街口灯笼"
           frame="No.02 · 草稿"
         >
-          <ExifCard exif={{ aperture: 5.6, dateTaken: '2026-09-17' }} demo />
+          <ExifCard slot="caption" exif={{ aperture: 5.6, dateTaken: '2026-09-17' }} demo />
         </PhotoPlate>
 
         <PhotoPlate

@@ -109,44 +109,56 @@ const {
   ]}
   style={aspect ? `aspect-ratio: ${aspect}` : undefined}
 >
-  <img
-    src={src}
-    width={width}
-    height={height}
-    alt={alt}
-    loading={loading}
-    decoding="async"
-    fetchpriority={fetchpriority}
-  />
-  {
-    /* 页码片：给了 current / total / frame 才出现 */
-    frame !== undefined || current !== undefined ? (
-      <PageChip current={current} total={total} label={frame} />
-    ) : null
-  }
-  <slot />
+  <div class="plate__media">
+    <img
+      src={src}
+      width={width}
+      height={height}
+      alt={alt}
+      loading={loading}
+      decoding="async"
+      fetchpriority={fetchpriority}
+    />
+    {
+      /* 页码片：给了 current / total / frame 才出现（压在照片左下角） */
+      frame !== undefined || current !== undefined ? (
+        <PageChip current={current} total={total} label={frame} />
+      ) : null
+    }
+    <slot />
+  </div>
+  <!-- 图注（EXIF 说明签）统一落在照片下方，而非压在照片上 -->
+  <slot name="caption" />
 </figure>
 
 <style>
   .plate {
-    position: relative;
     margin: 0;
-    box-shadow: var(--shadow-plate);
-    overflow: hidden;
   }
 
-  .plate--flat {
+  /* 图版本体＝「压在纸上」的那块：投影 + 溢出裁切（hover 缩放不外溢）都在这层 */
+  .plate__media {
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-plate);
+  }
+
+  .plate--flat .plate__media {
     box-shadow: none;
   }
 
   /* spread：满宽自然比例。显式 width/height 属性已经把盒子撑好，不靠 intrinsic 尺寸猜测 */
-  .plate > img {
+  .plate__media > img {
+    display: block;
     width: 100%;
     height: auto;
   }
 
-  /* cover：填满外层框并裁切（对置栏里的竖幅用） */
-  .plate--cover > img {
+  /* cover：填满外层框并裁切（对置栏里的竖幅 / 缩略卡用） */
+  .plate--cover .plate__media {
+    height: 100%;
+  }
+  .plate--cover .plate__media > img {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -157,19 +169,19 @@ const {
   }
 
   /* 呼吸级 hover：只有一点点，照片是主角 */
-  .plate--zoom > img {
+  .plate--zoom .plate__media > img {
     transition: transform var(--dur-hover) var(--ease);
   }
 
-  .plate--zoom:hover > img,
-  .plate--zoom:focus-visible > img {
+  .plate--zoom:hover .plate__media > img,
+  .plate--zoom:focus-visible .plate__media > img {
     transform: var(--plate-zoom);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .plate--zoom > img,
-    .plate--zoom:hover > img,
-    .plate--zoom:focus-visible > img {
+    .plate--zoom .plate__media > img,
+    .plate--zoom:hover .plate__media > img,
+    .plate--zoom:focus-visible .plate__media > img {
       transition: none;
       transform: none;
     }

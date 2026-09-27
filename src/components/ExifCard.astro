@@ -124,16 +124,12 @@ const hasBody = title !== undefined && title !== '';
 }
 
 <style>
+  /* 图注落在照片下方（不再是压在右下角的白纸片）：无底、无边、无投影，仅宋体题名 + 等宽参数。 */
   .shotcard {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    background: var(--paper);
-    border-top: var(--rule-w) solid var(--rule);
-    border-left: var(--rule-w) solid var(--rule);
-    padding: var(--shotcard-pad-top) var(--shotcard-pad-x) var(--shotcard-pad-bottom);
+    display: block;
+    margin-top: var(--gap-stack-xs);
+    text-align: left;
     max-width: var(--shotcard-max-w);
-    box-shadow: var(--shadow-seal);
   }
 
   /* 题名＝宋体；参数行＝等宽，绝不互换（The Three Voices Rule） */

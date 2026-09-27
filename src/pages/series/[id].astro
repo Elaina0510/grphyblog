@@ -205,7 +205,7 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
             lightboxGallery={gallery}
             lightboxIndex={hero.index}
           >
-            <ExifCard exif={hero.exif} />
+            <ExifCard slot="caption" exif={hero.exif} />
           </PhotoPlate>
         </section>
       </div>
@@ -267,7 +267,7 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
                 lightboxGallery={gallery}
                 lightboxIndex={f.index}
               >
-                <ExifCard exif={f.exif} />
+                <ExifCard slot="caption" exif={f.exif} />
               </PhotoPlate>
             ))}
           </div>
@@ -359,6 +359,8 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     .flow-grid {
       grid-template-columns: repeat(2, 1fr);
       gap: var(--gap-duo);
+      /* 同行里横/竖不同比例：整张图版（含下方图注）垂直居中，短图不再顶对齐留白 */
+      align-items: center;
     }
   }
   /* JS 现出态：被脚本临时隐藏的图版不占交互（无 JS 时该属性不会被加，内容全直出）。

@@ -196,7 +196,7 @@ const hasBody = hasNoteContent(entry.body) || body.plateCount > 0;
                     lightboxGallery={gallery}
                     lightboxIndex={part.ref.frameIndex}
                   >
-                    <ExifCard title={title} exif={part.ref.photo.exif} />
+                    <ExifCard slot="caption" title={title} exif={part.ref.photo.exif} />
                   </PhotoPlate>
                 ),
               )

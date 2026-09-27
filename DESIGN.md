@@ -289,7 +289,7 @@ Google Fonts CDN 在本机与部署侧不可达（`connect ETIMEDOUT`），必�
 ### 7.3 `ExifCard.astro` 拍摄单（EXIF 说明签）
 
 根元素固定 `<figcaption class="shotcard">`（拍摄单是图版的说明签，必须活在 `<figure>` 里）：
-宋体题名 + 等宽参数行，纸白底、上/左发丝线，压在图版右下角，`max-width: --shotcard-max-w`。
+宋体题名 + 等宽参数行，`max-width: --shotcard-max-w`。**统一落在照片正下方**（经 PhotoPlate 的具名 `caption` 槽，纸白页上纯文字、无底无边无投影），不再压成右下角白纸片。照片本体与页码片/闲章等覆盖件收在 PhotoPlate 的 `.plate__media` 盒内。
 
 | prop | 类型 | 说明 |
 |---|---|---|
