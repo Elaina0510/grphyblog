@@ -17,6 +17,7 @@ import {
   SUPPORTED_RAW_EXTENSIONS,
   baseName,
   baseNameFromDisplayPath,
+  buildIllustrationRefLines,
   buildManifest,
   buildPhotoEntry,
   composeCamera,
@@ -561,6 +562,70 @@ describe('尺寸推算与清单统计', () => {
       ignored: ['a.HEIC'],
     });
     expect(manifest.lines.join('\n')).toContain('已忽略 1 个不支持的文件');
+  });
+});
+
+describe('正文插图引用行（buildIllustrationRefLines：后台 Markdown 模式照抄用）', () => {
+  const sidecar = [
+    { file: 'photos/dawn-01.webp', thumb: 'photos/dawn-01.thumb.webp' },
+    { file: 'photos/dawn-02.webp', thumb: 'photos/dawn-02.thumb.webp' },
+  ];
+
+  it('系列：路径相对条目（photos/x.webp），顺序 = sidecar 顺序', () => {
+    expect(buildIllustrationRefLines({ sidecar, collection: 'series', entryId: 'daily-frames' })).toEqual([
+      '![说明](photos/dawn-01.webp)',
+      '![说明](photos/dawn-02.webp)',
+    ]);
+  });
+
+  it('随笔：路径带上同名资源夹标识（<标识>/photos/x.webp）', () => {
+    expect(
+      buildIllustrationRefLines({
+        sidecar,
+        collection: 'posts',
+        entryId: '2026-09-24-evening-stroll',
+      }),
+    ).toEqual([
+      '![说明](2026-09-24-evening-stroll/photos/dawn-01.webp)',
+      '![说明](2026-09-24-evening-stroll/photos/dawn-02.webp)',
+    ]);
+  });
+
+  it('跳过缩略图（.thumb.）、非 webp、空 / 缺 file 与脏条目', () => {
+    const messy = [
+      { file: 'photos/a.webp', thumb: 'photos/a.thumb.webp' },
+      { file: 'photos/b.thumb.webp' }, // 防御：file 直接写成缩略图
+      { file: 'photos/c.png' }, // 非 webp
+      { file: '' }, // 空串
+      { thumb: 'photos/d.thumb.webp' }, // 缺 file
+      null, // 脏条目
+      { file: 'photos/e.webp' },
+    ];
+    expect(buildIllustrationRefLines({ sidecar: messy, collection: 'series' })).toEqual([
+      '![说明](photos/a.webp)',
+      '![说明](photos/e.webp)',
+    ]);
+  });
+
+  it('顺序严格按传入 sidecar，绝不排序（与灯箱帧序列同口径）', () => {
+    const ordered = [{ file: 'photos/z.webp' }, { file: 'photos/a.webp' }, { file: 'photos/m.webp' }];
+    expect(buildIllustrationRefLines({ sidecar: ordered, collection: 'series' })).toEqual([
+      '![说明](photos/z.webp)',
+      '![说明](photos/a.webp)',
+      '![说明](photos/m.webp)',
+    ]);
+  });
+
+  it('空 / 缺省入参 → 空数组（CLI 据此不打印这块）', () => {
+    expect(buildIllustrationRefLines({ sidecar: [], collection: 'series' })).toEqual([]);
+    expect(buildIllustrationRefLines({})).toEqual([]);
+    expect(buildIllustrationRefLines()).toEqual([]);
+  });
+
+  it('随笔标识为空时退化成条目相对路径（不写出前导斜杠的脏值）', () => {
+    expect(
+      buildIllustrationRefLines({ sidecar: [{ file: 'photos/a.webp' }], collection: 'posts' }),
+    ).toEqual(['![说明](photos/a.webp)']);
   });
 });
 

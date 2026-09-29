@@ -70,6 +70,23 @@ describe('resolveContentImage / contentImageUrl', () => {
     expect(url.startsWith('/')).toBe(true);
     expect(url).toContain('dawn-01.thumb');
   });
+
+  // 后台封面改成「从条目资源里挑」之后，平铺条目（随笔）存出来会多一层 <标识>/ 前缀。
+  it('后台挑出来的 `<标识>/photos/x.webp` 与手写的 photos/x.webp 解析成同一个 URL', () => {
+    const dir = 'posts/2026-09-21-morning-fog';
+    expect(resolveContentImage(dir, `${dir.replace(/^posts\//, '')}/photos/dawn-01.webp`)).toBeTypeOf(
+      'string',
+    );
+    expect(contentImageUrl(dir, '2026-09-21-morning-fog/photos/dawn-01.webp')).toBe(
+      contentImageUrl(dir, 'photos/dawn-01.webp'),
+    );
+  });
+
+  it('归一到 photos/ 尾段后仍查不到 → undefined（不静默指到别的图）', () => {
+    expect(
+      resolveContentImage('posts/2026-09-21-morning-fog', 'other-place/photos/ghost.webp'),
+    ).toBeUndefined();
+  });
 });
 
 describe('entryResourceDir · 由 collection+id/slug 归一资源目录（页面/灯箱一次调用）', () => {

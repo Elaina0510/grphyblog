@@ -20,7 +20,7 @@
 //
 // 结构（I/O 与计算分离，便于 Vitest 真断言）：
 //   纯函数区（export，无 fs/sharp/exifr）：文件名派生 / EXIF→Exif 映射 / 幂等判定 /
-//     sidecar 组装与合并 / 落位路径 / Markdown 骨架 / 参数解析 / 导入清单
+//     sidecar 组装与合并 / 落位路径 / Markdown 骨架 / 参数解析 / 导入清单 / 正文插图引用行
 //   I/O 区（sharp + exifr + fs）：runImport() 编排；main() 只做 CLI 与交互
 // 集成测试直接调 runImport({ root: 临时目录, … })，打真实 sharp/exifr，不 mock 文件读写。
 // =============================================================================
@@ -659,6 +659,55 @@ export function buildManifest(p) {
   };
 }
 
+// ---- 正文插图引用行（后台「以 Markdown 编辑」用；纯文本产物，无 fs/console）-----
+
+/** 引用行里的 alt/说明 占位文案：用户粘进正文后须换成真实描述。 */
+const ILLUSTRATION_ALT = '说明';
+
+/** 引用行块标题：仅在本次确实新增了照片时由 runImport 打印。 */
+const ILLUSTRATION_REF_HEADER = '可粘贴到后台「正文」的插图引用行（Markdown 模式）：';
+
+/** 引用行块尾的一行提醒。 */
+const ILLUSTRATION_REF_TIP =
+  '提示：把上面每行的「说明」改成真实的图片描述，再整行复制进后台正文（Markdown 模式）。';
+
+/**
+ * 生成可粘贴到后台「正文（以 Markdown 编辑）」的插图引用行（纯函数）。
+ *
+ * 为什么需要：Sveltia 富文本的图片块只有上传口（政策禁止走上传），正文插图只能在
+ * 「以 Markdown 编辑」里手写相对路径；本函数把刚导入的 sidecar 摊成人能照抄的行，
+ * 免得非技术用户手拼路径拼错（路径口径见 public/admin/config.yml 两处 body hint）。
+ *
+ * 落位口径与 resolveTarget 一致：
+ *   series → 正文在 <标识>/index.md，photos 与之同目录 → `photos/x.webp`
+ *   posts  → 正文是扁平的 <标识>.md，photos 在同名资源夹 → `<标识>/photos/x.webp`
+ *
+ * 只取展示图（sidecar 的 file 字段，即 <base>.webp）：跳过缩略图（含 `.thumb.`）、
+ * 非 webp（用 IMAGE_FORMAT 常量判、不写死扩展名）、空 / 缺 file 的条目；顺序 = 传入 sidecar 顺序。
+ *
+ * @param {{
+ *   sidecar?: Array<{ file?: string }>|null,
+ *   collection?: 'series'|'posts'|string,
+ *   entryId?: string,
+ * }} [p]
+ * @returns {string[]}
+ */
+export function buildIllustrationRefLines({ sidecar, collection, entryId } = {}) {
+  const id = String(entryId ?? '').trim();
+  const prefix = collection === 'posts' && id !== '' ? `${id}/` : '';
+  const displaySuffix = `.${IMAGE_FORMAT}`.toLowerCase();
+  /** @type {string[]} */
+  const lines = [];
+  for (const entry of sidecar ?? []) {
+    const rel = typeof entry?.file === 'string' ? entry.file.trim() : '';
+    if (rel === '') continue;
+    if (rel.includes('.thumb.')) continue;
+    if (!path.basename(rel).toLowerCase().endsWith(displaySuffix)) continue;
+    lines.push(`![${ILLUSTRATION_ALT}](${prefix}${rel})`);
+  }
+  return lines;
+}
+
 // -----------------------------------------------------------------------------
 // I/O 区：sharp / exifr / fs 只出现在这里
 // -----------------------------------------------------------------------------
@@ -970,6 +1019,21 @@ export async function runImport(opts = {}) {
 
   log(`开始导入：raw=${path.relative(root, rawDir) || '.'} → src/content/${target.entryDir}`);
   for (const line of manifest.lines) log(line);
+
+  // 本次确实新增了照片时，附一段「可粘贴到后台正文（Markdown 模式）」的插图引用行，
+  // 非技术用户照抄即可（口径与逻辑见纯函数区 buildIllustrationRefLines 的注释）。
+  if (results.length > 0) {
+    const refLines = buildIllustrationRefLines({
+      sidecar: results.map((r) => r.entry),
+      collection: target.collection,
+      entryId: target.identifier,
+    });
+    if (refLines.length > 0) {
+      log(ILLUSTRATION_REF_HEADER);
+      for (const line of refLines) log(line);
+      log(ILLUSTRATION_REF_TIP);
+    }
+  }
 
   return {
     target,

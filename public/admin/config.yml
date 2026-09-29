@@ -9,19 +9,33 @@
 #
 # 影响面：本目录（public/admin/）就是后台的全部。Astro 把 public/ 原样拷进 dist/。
 #
-# 🔒 照片「禁上传」是怎么落的（三层，与迁移 Decap 时同口径）：
-#    1) cover 字段用 `widget: string`（不是 image）：条目表单里没有上传/拖拽控件，
-#       只能填「相对本条目的照片路径」（如 photos/night-01.webp）。
-#    2) media_folder 指向 public/uploads：即便有人从后台媒体库真上传了文件，
-#    3) 兜底检查：`npm run check-images`（scripts/check-image-sources.mjs，并挂在 prebuild 上）
-#       的 R5 规则——public/ 下不得出现图片。
-#       有人真去后台媒体库上传，文件落 public/uploads，下一次 npm run build（= Pages 构建命令）
-#       即失败 → 传不进生产。照片本身只能出自本地 `npm run import`。
+# ✍️ 正文为什么是一个叫 body 的字段（不是"引擎自动给"）：Sveltia 把正文当成
+#   `body_field.key`（默认 'body'）这个名字的字段来读写，`inline: false`（默认）时
+#   序列化会把它的值从 frontmatter 里摘出来、写到 '---' 之后的正文区。
+#   ➜ fields 里**不声明** body，编辑器区域就整块不出现（实测：0.221.0 加与不加的唯一差别）。
+#   ➜ 声明了也不会污染 frontmatter：正文永远不进 frontmatter，strict schema 不受影响。
+#
+# 🔒 照片「不能从后台进来」是怎么落的（三层）：
+#    1) cover 用 `widget: image` + 集合级 `media_folder: ''` / `public_folder: ''`
+#       = 「条目资源」视图，只能浏览**本条目目录下已入库的**照片（实测存出来的串：
+#       系列 `photos/night-01.webp`；随笔 `<标识>/photos/dawn-01.webp`，两种前台都认，
+#       见 src/utils/contentImages.ts 的归一化）。`choose_url: false` 顺手关掉「输入 URL」页签。
+#    2) 那个对话框仍带「上传」按钮（引擎没有"只浏览不上传"的开关），所以真正的兜底是构建期：
+#    3) `npm run check-images`（scripts/check-image-sources.mjs，挂在 prebuild 上）——
+#       上传的图落到 <条目>/photos/ → R3 要它出现在 photos.meta.json 里（只有 import 脚本会登记）；
+#       落到别处 → R1 结构规则；落到 public/ → R5。任一条红 = Pages 构建失败 = 进不了生产。
+#       照片本身只能出自本地 `npm run import`。
 #
 # 🖼 预览基准：前台图片 URL 规则的唯一出口是 src/utils/imageUrl.ts。
-#    Sveltia 的编辑器预览由它自己按 public_folder 拼 URL；本文件的 public_folder
-#    与其默认基准（同源根 '/'）保持一致。➜ 改 imageUrl.ts 的基准规则时，**必须同步**改本
-#    文件的 public_folder（imageUrl.ts 头部有反向互指注释）。
+#    全局 public_folder 与其默认基准（同源根 '/'）保持一致；两个集合各自把
+#    media_folder / public_folder 覆写成空串（= 相对本条目），所以封面/正文插图都按
+#    「相对条目」落盘，不走全局 /uploads 前缀。
+#    ➜ 改 imageUrl.ts 的基准规则时，**必须同步**复核本文件的这几处（imageUrl.ts 头部有反向互指注释）。
+#
+# 🖼 正文里的插图：Sveltia 富文本的「图片」块只有拖拽/浏览(上传)/粘贴三个入口，
+#    **没有**"从已入库照片里挑"的列表（实测：linked_images:false、editor_components 去掉 image
+#    两种写法都不行，后者连按钮都没了）。所以正文插图走右上角「以 Markdown 编辑」手写引用行，
+#    形如 ![说明](photos/night-01.webp)。`npm run import` 结束时会把现成的引用行打印出来，复制即可。
 #
 # ✍️ 提交信息：未自定义（用 Sveltia 默认文案）。GitHub 上按作者/时间检索即可。
 # =============================================================================
@@ -41,17 +55,18 @@ display_url: https://grphyblog.pages.dev
 # simple = 改完即 commit 即发布（草稿与否只由 frontmatter 的 draft 决定）。
 publish_mode: simple
 
-# 预览/媒体 URL 前缀（禁上传口径见顶部注释第 2/3 层）。
+# 全局媒体目录：Sveltia 没 media_folder 会直接报「未定义媒体文件夹」，
+# 后台「全局资源」页签也用它；照片不该从这里进，落在这里会被 R5 拦在构建期。
 media_folder: public/uploads
 public_folder: /uploads
 
 # -----------------------------------------------------------------------------
-# 内容模型：字段与 src/content/schemas.ts 的 strict schema **逐字对齐**，
+# 内容模型：frontmatter 字段与 src/content/schemas.ts 的 strict schema **逐字对齐**，
 # 多写一个键、少写一个键都会让下一次 `npm run build` 在 zod .strict() 上崩。
+# 唯一例外是名为 body 的正文字段：它不进 frontmatter（见顶部 ✍️ 段），
 # 由 tests/unit/decap-cms.test.ts 钉成断言（含「按 widget 造样本 frontmatter
 # → 过真 schema」的往返用例）。
 # 条目标识（系列目录名 / 随笔文件名）走路径输入框，不需要额外 slug/summary 字段。
-# Markdown 正文（手记 / 随笔内容）由编辑器 body 区承担，不是 field，不进 frontmatter。
 # -----------------------------------------------------------------------------
 collections:
   # ── 系列：src/content/series/<标识>/index.md ─────────────────────────────
@@ -77,6 +92,9 @@ collections:
     format: yaml-frontmatter
     slug: '{{fields.title}}'
     summary: '{{fields.title}}'
+    # 封面/正文插图都按「相对本条目」处理（详见顶部 🔒 段）。
+    media_folder: ''
+    public_folder: ''
     fields:
       - name: title
         label: 标题
@@ -92,13 +110,17 @@ collections:
         picker_utc: true
 
       - name: cover
-        label: 封面（只能选已入库照片，后台无上传口）
-        widget: string
+        label: 封面（从本系列已入库照片里挑）
+        widget: image
+        # 关掉「输入 URL」页签：封面只能是仓库里已有的图，不能外链。
+        choose_url: false
         hint: |
-          填「相对本条目」的路径，例如 photos/night-01.webp。
-          文件名请从 src/content/series/<本系列目录>/photos/ 里复制一份。
-          照片只能由本地 `npm run import` 生成（压缩 + 缩略图 + EXIF sidecar），
-          后台条目表单里没有上传按钮，也不该出现没进 sidecar 的图片。
+          点「替换」→「条目资源」页签，列表就是本系列目录下 photos/ 里已入库的照片，
+          选中后存进 frontmatter 的形如 photos/night-01.webp。
+          ⚠️ 新建的系列条目这一栏只有上传拖放区、没有「替换」按钮：因为照片目录还没生成。
+          先回本地跑 `npm run import -- --series <系列标识>`，再进后台打开这条来挑。
+          照片只能由本地 `npm run import` 生成（压缩 + 缩略图 + EXIF sidecar）；
+          这个对话框里的「上传」不是通道——上传件没有 sidecar 登记，下一次构建即失败。
 
       - name: tags
         label: 标签
@@ -122,6 +144,16 @@ collections:
         default: false
         hint: 打开 = 撤下（不进线上产物，等于下线按钮）；关闭 = 发布。
 
+      # 正文（系列手记）。必须叫 body：见顶部 ✍️ 段。放在最后 = 表单里排在最下。
+      - name: body
+        label: 正文（系列手记）
+        widget: markdown
+        required: false
+        hint: |
+          存进文件时是 frontmatter 之后的正文区，不会变成 frontmatter 字段。
+          右上角「以 Markdown 编辑」可切到手写 Markdown；插图就在那种模式下写
+          `![说明](photos/文件名.webp)`（路径抄自 `npm run import` 结束时打印的引用行）。
+
   # ── 随笔：src/content/posts/<日期-标题>.md（平铺不套目录；插图夹与文件同名）──
   - name: posts
     label: 随笔
@@ -134,6 +166,10 @@ collections:
     format: yaml-frontmatter
     slug: '{{fields.title}}'
     summary: '{{fields.title}}'
+    # 同系列：相对本条目。随笔的 .md 是平铺文件、插图夹与文件同名，
+    # 实测这种形态下后台存出来是 `<标识>/photos/x.webp`（多一层，前台同样认）。
+    media_folder: ''
+    public_folder: ''
     fields:
       - name: title
         label: 标题
@@ -148,12 +184,15 @@ collections:
         picker_utc: true
 
       - name: cover
-        label: 封面（只能选已入库照片，后台无上传口）
-        widget: string
+        label: 封面（从本篇已入库照片里挑）
+        widget: image
+        choose_url: false
         hint: |
-          填「相对本条目」的路径，例如 photos/dawn-01.webp。
-          随笔的插图资源夹与 .md 同名（src/content/posts/<日期-标题>/photos/），
-          由 `npm run import -- --post <日期-标题>` 生成；后台条目表单不能上传。
+          点「替换」→「条目资源」页签，列表就是本篇同名资源夹 <日期-标题>/photos/ 里已入库的照片。
+          ⚠️ 新建的随笔这一栏只有上传拖放区、没有「替换」按钮：因为插图夹还没生成。
+          先回本地跑 `npm run import -- --post <日期-标题>`，再进后台打开这条来挑。
+          随笔的插图资源夹与 .md 同名，由同一条 import 命令生成；
+          这个对话框里的「上传」不是通道——上传件没有 sidecar 登记，下一次构建即失败。
 
       - name: tags
         label: 标签
@@ -168,3 +207,14 @@ collections:
         widget: boolean
         default: false
         hint: 打开 = 撤下（不进线上产物）；关闭 = 发布。
+
+      # 正文（随笔内容）。必须叫 body：见顶部 ✍️ 段。
+      - name: body
+        label: 正文（随笔内容）
+        widget: markdown
+        required: false
+        hint: |
+          存进文件时是 frontmatter 之后的正文区，不会变成 frontmatter 字段。
+          右上角「以 Markdown 编辑」可切到手写 Markdown；插图就在那种模式下写
+          `![说明](<日期-标题>/photos/文件名.webp)`（路径抄自 `npm run import` 打印的引用行），
+          宽高与灯箱帧序列在构建期按同名的 EXIF 登记表（sidecar）回填。

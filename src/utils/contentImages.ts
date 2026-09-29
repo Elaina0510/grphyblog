@@ -9,12 +9,14 @@
 // 出口仍统一走 imageUrl()（边界③）：本模块只负责「相对内容路径 -> 构建 URL」，
 // base 前缀的语义完全交给 imageUrl，迁移图床时依旧只改一处。
 //
-// 与后台的关系（decap-cms 任务 8）：/admin 里 cover 存的就是本模块认得的「相对条目路径」
-// （photos/xxx.webp），但 CDN 上的 CMS 运行时 import 不到这个模块，只能按 imageUrl 的规则
-// 直接拼预览 URL（见 public/admin/index.html 与 src/utils/imageUrl.ts 的同步约定）。
+// 与后台的关系（decap-cms 任务 8）：/admin 的封面是从「条目资源」里挑已入库照片，
+// 存出来的两种形都归本模块认（见 resolveContentImage）——系列 = `photos/xxx.webp`，
+// 随笔（平铺 .md）= `<标识>/photos/xxx.webp`。CDN 上的 CMS 运行时 import 不到这个模块，
+// 只能按 imageUrl 的规则直接拼预览 URL（见 public/admin/index.html 与 imageUrl.ts 的同步约定）。
 // =============================================================================
 
 import { imageUrl, type ImageUrlOptions } from './imageUrl';
+import { normalizeIllustrationPath } from './postIllustrations';
 
 /** 内容根目录前缀（glob 的 key 以此开头），归一化时剥掉。 */
 const CONTENT_ROOT = '/src/content/';
@@ -77,7 +79,13 @@ export function entryResourceDir(collection: string, id: string): string {
  * @param relPath  内容相对路径，如 `photos/night-01.webp`
  */
 export function resolveContentImage(entryDir: string, relPath: string): string | undefined {
-  return contentImageMap[contentImageKey(entryDir, relPath)];
+  const direct = contentImageMap[contentImageKey(entryDir, relPath)];
+  if (direct) return direct;
+  // 后台封面选择器对**平铺条目**（随笔的 `<日期-标题>.md`）存出的是 `<标识>/photos/x.webp`
+  // ——比手写的 `photos/x.webp` 多一层。两种都认：按 photos/ 之后的尾段重查一次。
+  const tail = normalizeIllustrationPath(relPath);
+  if (tail === relPath.replace(/^\.?\//, '')) return undefined;
+  return contentImageMap[contentImageKey(entryDir, tail)];
 }
 
 /**

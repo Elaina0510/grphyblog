@@ -8,10 +8,16 @@ import { describe, expect, it } from 'vitest';
 import { postsSchema, seriesSchema } from '../../src/content/schemas';
 
 // /admin 后台契约测试。引擎：Sveltia CMS（@sveltia/cms）——历史上是 Decap，见 index.html 注释。
-// 本文件钉住三条红线：
+// 本文件钉住四条红线：
 //   1) config.yml 只允许 Sveltia schema 认得的键（Sveltia 处处 additionalProperties:false）；
 //   2) CMS 写出的 frontmatter 键集合 == src/content/schemas.ts 的 strict schema（不多不少）；
-//   3) 照片禁上传：cover 走 string widget + 无 OAuth/代理入口 + 构建期守卫（R5 另有独立用例）。
+//      正文是唯一的例外：它**必须**声明成名为 body 的 markdown 字段（Sveltia 不声明 body
+//      就整块不渲染正文编辑器，实测 0.221.0），但 `body_field.inline` 默认 false →
+//      它被写到 frontmatter 之后的正文区，不进 frontmatter（下面有专门用例钉住）。
+//   3) 封面只能指向已入库照片：cover 用 image widget + 集合级 media_folder/public_folder 空串
+//      （= 从「本条目目录」的已有文件里挑）+ choose_url:false（不许外链）；
+//   4) 照片不许从后台进来：那个对话框仍带上传按钮，兜底是构建期守卫 R1/R3/R5
+//      （scripts/check-image-sources.mjs）——上传件没有 photos.meta.json 登记，构建即红。
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 // js-yaml 是 astro 的依赖，这里作为**本仓库 devDependency** 显式装了一份（见 package.json），
@@ -86,6 +92,15 @@ function collectionByName(name: string): CmsCollection {
 
 function fieldNames(collection: CmsCollection): string[] {
   return (collection.fields || []).map((f) => f.name);
+}
+
+/**
+ * 会真的落进 frontmatter 的字段名。
+ * 名为 body 的正文字段除外：Sveltia 的 body_field 默认 `{key: 'body', inline: false}`，
+ * 序列化时它的值从数据里摘出来写到 '---' 之后（实测存盘文件即是如此）。
+ */
+function frontmatterFieldNames(collection: CmsCollection): string[] {
+  return fieldNames(collection).filter((name) => name !== 'body');
 }
 
 /**
@@ -258,10 +273,13 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     expect(fromSource, '没能从 schemas.ts 抠出 seriesSchema 键，用例前提破了').toBeTruthy();
     const zodKeys = Object.keys((seriesSchema as unknown as { shape: Record<string, unknown> }).shape);
     expect(fromSource).toEqual(zodKeys);
-    expect(fieldNames(collectionByName('series'))).toEqual(fromSource);
-    expect(fieldNames(collectionByName('series')).sort()).toEqual(
+    const series = collectionByName('series');
+    expect(frontmatterFieldNames(series)).toEqual(fromSource);
+    expect(frontmatterFieldNames(series).sort()).toEqual(
       ['cover', 'date', 'draft', 'order', 'tags', 'title'].sort(),
     );
+    // 正文只多一个 body，且排在表单最后（表单顺序 = 用户看到的顺序）。
+    expect(fieldNames(series)).toEqual([...fromSource, 'body']);
   });
 
   it('posts 字段集合 == postsSchema 键集合（随笔没有 order）', () => {
@@ -269,16 +287,40 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     expect(fromSource, '没能从 schemas.ts 抠出 postsSchema 键，用例前提破了').toBeTruthy();
     const zodKeys = Object.keys((postsSchema as unknown as { shape: Record<string, unknown> }).shape);
     expect(fromSource).toEqual(zodKeys);
-    expect(fieldNames(collectionByName('posts'))).toEqual(fromSource);
-    expect(fieldNames(collectionByName('posts'))).not.toContain('order');
+    const posts = collectionByName('posts');
+    expect(frontmatterFieldNames(posts)).toEqual(fromSource);
+    expect(frontmatterFieldNames(posts)).not.toContain('order');
+    expect(fieldNames(posts)).toEqual([...fromSource, 'body']);
   });
 
   it('没有 slug / summary / path 之类的伪字段：条目标识只走路径，不进 frontmatter', () => {
-    const banned = ['slug', 'summary', 'path', 'filename', 'body', 'id', 'resource'];
+    const banned = ['slug', 'summary', 'path', 'filename', 'id', 'resource'];
     for (const c of config.collections) {
       for (const name of fieldNames(c)) {
         expect(banned, `${c.name} 有会把垃圾键写进 frontmatter 的字段：${name}`).not.toContain(name);
       }
+    }
+  });
+
+  // 正文：Sveltia 只在 fields 里出现 name: body 时才渲染正文编辑器（实测：不声明 = 表单里整块没有，
+  // 用户就只能改 frontmatter）。它落盘时走 body_field（默认 key 'body' / inline false）→ 文件正文区。
+  it('两个集合都有且只有一个 name 为 body 的 markdown 正文字段（可留空、带 hint）', () => {
+    for (const c of config.collections) {
+      const bodies = (c.fields || []).filter((f) => f.name === 'body');
+      expect(bodies, `${c.name} 缺 body 正文字段：后台就没有正文编辑器`).toHaveLength(1);
+      expect(bodies[0].widget, `${c.name} 的 body 应是 markdown widget`).toBe('markdown');
+      expect(bodies[0].required, `${c.name} 的 body 应允许留空`).toBe(false);
+      expect(bodies[0].hint, `${c.name} 的 body 需要 hint 说明插图怎么写`).toBeTruthy();
+      expect(fieldNames(c).at(-1), `${c.name} 的正文应排在表单最后（与用户阅读顺序一致）`).toBe('body');
+    }
+  });
+
+  it('正文不许被塞进 frontmatter：没有任何集合设 body_field.inline = true', () => {
+    for (const c of config.collections) {
+      const bodyField = c.body_field as { inline?: boolean } | undefined;
+      expect(bodyField?.inline, `${c.name} 设了 body_field.inline → 正文会变成 frontmatter 键`).not.toBe(
+        true,
+      );
     }
   });
 
@@ -307,6 +349,8 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
       const data: Record<string, unknown> = {};
       for (const field of c.fields) {
         expect(field.name, `${c.name} 有没起名字的字段`).toBeTruthy();
+        // 正文字段不进 frontmatter，样本里不算它。
+        if (field.name === 'body') continue;
         data[field.name] = sampleValueFor(field);
       }
       const schema = c.name === 'series' ? seriesSchema : postsSchema;
@@ -322,7 +366,10 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
   it('少写一个字段（模拟漏配 required）也过不了 schema：证明上一条不是空转', () => {
     const series = collectionByName('series');
     const data: Record<string, unknown> = {};
-    for (const field of series.fields.slice(0, -2)) data[field.name] = sampleValueFor(field);
+    // 先滤掉正文（它不进 frontmatter），再截掉末尾两个真字段（order / draft）→ 必填缺失。
+    for (const field of series.fields.filter((f) => f.name !== 'body').slice(0, -2)) {
+      data[field.name] = sampleValueFor(field);
+    }
     expect(seriesSchema.safeParse(data).success).toBe(false);
   });
 
@@ -342,19 +389,26 @@ function postsHasNoOrder(posts: CmsCollection): boolean {
 }
 
 // =============================================================================
-// 任务 6：照片禁上传。配置层能关到的程度 + 构建期兜底（scripts/check-image-sources.mjs）
+// 任务 6：照片不能从后台进来。配置层能关到的程度 + 构建期兜底（scripts/check-image-sources.mjs）
 // =============================================================================
-describe('禁上传（任务 6）：配置层不给任何写媒体文件的落点', () => {
-  it('media_folder 指向受守卫的 public/uploads（非内容 photos 目录）', () => {
+describe('禁上传（任务 6）：配置层只让挑已入库的图，上传口由构建期守卫兜底', () => {
+  it('全局 media_folder 指向受 R5 守卫的 public/uploads（非内容 photos 目录）', () => {
     expect(config.media_folder, 'Sveltia 要求 media_folder 才能管理媒体').toBe('public/uploads');
     expect(config.media_folder).not.toMatch(/photos/);
-    // 拦截「上传进生产」的是：cover 用 string widget（无条目内上传）+ 构建期守卫 R5（public/ 不得有图片）
   });
 
-  it('cover 用 string widget（不渲染上传/拖拽区），且明确 hint 只能选已入库照片', () => {
+  it('两个集合都把媒体目录覆写成「相对本条目」（封面只能从本条目的照片里挑）', () => {
+    for (const c of config.collections) {
+      expect(c.media_folder, `${c.name} 该用条目相对媒体目录`).toBe('');
+      expect(c.public_folder, `${c.name} 该用条目相对前缀，存出 photos/x.webp 这类路径`).toBe('');
+    }
+  });
+
+  it('cover 用 image widget（从条目资源列表里点选）+ 关掉「输入 URL」+ 有 hint', () => {
     for (const c of config.collections) {
       const cover = c.fields.find((f) => f.name === 'cover');
-      expect(cover?.widget, `${c.name} 的 cover 字段配置缺失`).toBe('string');
+      expect(cover?.widget, `${c.name} 的 cover 字段配置缺失`).toBe('image');
+      expect(cover?.choose_url, `${c.name} 的 cover 不许外链`).toBe(false);
       expect(cover?.hint, 'cover 需要 hint 说明「只能选已入库照片」').toBeTruthy();
     }
   });
@@ -368,7 +422,7 @@ describe('禁上传（任务 6）：配置层不给任何写媒体文件的落�
   it('public/ 目录里当前没有图片，后台页与配置也不引用图片资源', () => {
     expect(existsSync(resolve(ADMIN_DIR, 'config.yml'))).toBe(true);
     expect(existsSync(resolve(ADMIN_DIR, 'index.html'))).toBe(true);
-    // 兜底检查（R5）本身有独立用例文件，这里只钉「后台目录只有静态文件」这一事实
+    // 兜底检查（R1/R3/R5）本身有独立用例文件，这里只钉「后台目录只有静态文件」这一事实
     const uploads = ['uploaded', 'uploads', 'media', 'images']
       .map((d) => resolve(ROOT, 'public', d))
       .filter((p) => existsSync(p));

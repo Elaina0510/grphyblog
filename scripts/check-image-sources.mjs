@@ -1,14 +1,14 @@
 // =============================================================================
-// check-image-sources —— 照片「唯一入库通道」的构建期兜底（decap-cms 任务 6）
+// check-image-sources —— 照片「唯一入库通道」的构建期硬检查（decap-cms 任务 6）
 //
 // 为什么要有这个文件：
 //   design §4 规定所有照片只能由 `npm run import`（scripts/import-photos.mjs）生成，
-//   /admin 后台只动文字。配置侧已把上传口关死（public/admin/config.yml 顶部注释：
-//   全站与 collection 两级都不设 media_folder + cover 用 string widget 而非 image widget），
-//   但那终究是「CDN 上的第三方脚本 + 人」的行为。万一将来换 CMS 版本、迁 Sveltia、
-//   或有人手工往仓库塞图，就会冒出「没有 EXIF sidecar 的图」——
-//   那种图进不了灯箱、拿不到拍摄单，还会白白撑大仓库。
-//   本脚本把约束变成**构建必然经过的硬检查**：发现非脚本来源图片 → 退出码 1，构建失败。
+//   /admin 后台只动文字与「挑哪张已入库的图当封面」。
+//   后台的封面选择器（Sveltia 的 image widget）确实能浏览本条目目录里已入库的照片，
+//   但那个对话框同时带「上传」按钮，而引擎**没有**"只浏览不上传"的开关（实测 0.221.0）——
+//   所以本脚本是这条红线的**唯一防线**：任何从后台/手工进来的图都没有 sidecar 登记，
+//   命中下面任一条即退出码 1，Pages 构建失败 → 进不了生产。
+//   那种图也进不了灯箱、拿不到拍摄单，还会白白撑大仓库。
 //
 // 检查规则（都围绕「src/content 的照片必须出自脚本」）：
 //   R1 结构    src/content 下的图片必须位于 <集合>/<条目>/photos/ 里
@@ -219,7 +219,8 @@ export function auditImageSources({ files, sidecars }) {
       if (!declared.has(relInEntry)) {
         violations.push(
           `R3 ${CONTENT_ROOT}/${entryDir}/${relInEntry} 未被 ${sidecarPath} 登记：` +
-            '它不是 npm run import 的产物（后台没有上传口，照片不该从别处进来）。',
+            '它不是 npm run import 的产物（后台封面对话框的「上传」能把文件塞进来，但只有脚本会登记 sidecar，' +
+            '所以这种图进不了灯箱；要加照片就回本地重跑）。',
         );
       }
     }
@@ -313,7 +314,7 @@ const HELP_TEXT = [
   '  R4 sidecar 登记的 file / thumb 磁盘上必须真的存在',
   '  R5 public/ 下不得出现图片（站点图标需加 ALLOWED_PUBLIC_IMAGES 白名单）',
   '',
-  '这是 /admin 后台「禁上传」的构建期兜底（design §4 / decap-cms 任务 6）。',
+  '这是 /admin 后台「照片只能出自脚本」的构建期防线（design §4 / decap-cms 任务 6）。',
   '退出码 0 = 通过；1 = 存在非脚本来源图片（prebuild 会因此中断构建）。',
 ].join('\n');
 

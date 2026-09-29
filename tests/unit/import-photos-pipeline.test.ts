@@ -414,6 +414,78 @@ describe('随笔模式落位（任务 8：--post 与系列同通道）', () => {
   }, 300_000);
 });
 
+describe('导入结束打印可粘贴的正文插图引用行（后台 Markdown 模式照抄用）', () => {
+  /** 收集 runImport 通过注入 log 打出的每一行。 */
+  function captureLog() {
+    /** @type {string[]} */
+    const lines = [];
+    return { lines, log: (line) => lines.push(line) };
+  }
+
+  it('系列：新增照片后打印引用行（photos/x.webp 相对条目），跳过缩略图', async () => {
+    const { lines, log } = captureLog();
+    await runImport({
+      root: path.join(tmpRoot, 'ref-series-root'),
+      rawDir: tmpRaw(),
+      thumbsDir: path.join(tmpRoot, 'thumbs-ref-series'),
+      collection: 'series',
+      identifier: 'ref-series',
+      date: '2026-09-24',
+      only: ['sample-a', 'sample-b'],
+      log,
+    });
+    const text = lines.join('\n');
+    expect(text).toContain('可粘贴到后台「正文」的插图引用行（Markdown 模式）：');
+    const refLines = lines.filter((l) => l.startsWith('!['));
+    expect(refLines).toEqual(['![说明](photos/sample-a.webp)', '![说明](photos/sample-b.webp)']);
+    expect(refLines.every((l) => !l.includes('.thumb.'))).toBe(true);
+    expect(text).toContain('把上面每行的「说明」改成真实的图片描述');
+  }, 300_000);
+
+  it('随笔：引用行带上同名资源夹标识前缀', async () => {
+    const { lines, log } = captureLog();
+    await runImport({
+      root: path.join(tmpRoot, 'ref-post-root'),
+      rawDir: tmpRaw(),
+      thumbsDir: path.join(tmpRoot, 'thumbs-ref-post'),
+      collection: 'posts',
+      identifier: '2026-09-24-ref-walk',
+      only: ['sample-c'],
+      log,
+    });
+    expect(lines).toContain('![说明](2026-09-24-ref-walk/photos/sample-c.webp)');
+  }, 300_000);
+
+  it('全部跳过（本次无新增）时既不打印标题也不打印引用行', async () => {
+    const root = path.join(tmpRoot, 'ref-skip-root');
+    const thumbsDir = path.join(tmpRoot, 'thumbs-ref-skip');
+    await runImport({
+      root,
+      rawDir: tmpRaw(),
+      thumbsDir,
+      collection: 'series',
+      identifier: 'ref-skip',
+      date: '2026-09-24',
+      only: ['sample-a'],
+      log: () => {},
+    });
+    const { lines, log } = captureLog();
+    const again = await runImport({
+      root,
+      rawDir: tmpRaw(),
+      thumbsDir,
+      collection: 'series',
+      identifier: 'ref-skip',
+      only: ['sample-a'],
+      log,
+    });
+    expect(again.manifest.addedCount).toBe(0);
+    const text = lines.join('\n');
+    expect(text).not.toContain('插图引用行');
+    expect(lines.some((l) => l.startsWith('!['))).toBe(false);
+  }, 300_000);
+});
+
 describe('原图保护：raw/ 只读（任务 11 + §7 硬约束）', () => {
   it('临时 raw/ 与原仓库 raw/ 在一次真实导入后逐文件 name/size/mtime 不变', async () => {
     const tmpBefore = snapshotRawDir(tmpRaw());
