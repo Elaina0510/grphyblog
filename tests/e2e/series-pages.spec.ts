@@ -50,9 +50,10 @@ test.describe('系列列表 /series/ · 目次点线行', () => {
     // 已发布（city-lights）在列，链到详情
     await expect(page.locator('a.toc-row[href="/series/city-lights/"]')).toHaveCount(1);
     // 行序 = 后台拖拽维护的 order 升序（order 相同再按日期正序）：留白 1 → 夜光 3 → 街头随拍 4。
+    // 题名只认前缀：后台验收时标题会被临时改动，不该让断言跟着红。
     const names = await page.locator('.toc .name').allInnerTexts();
     expect(names[0]).toContain('留白');
-    expect(names.indexOf('夜光 · 城市')).toBeGreaterThan(0);
+    expect(names.findIndex((n) => n.startsWith('夜光'))).toBeGreaterThan(0);
 
     // 草稿：路径与题名都不该出现
     await expect(page.locator('a[href="/series/daily-frames/"]')).toHaveCount(0);
