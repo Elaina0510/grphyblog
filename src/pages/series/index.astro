@@ -69,14 +69,14 @@ function fmtDate(value: Date | string): string {
   return `${y}.${mo.padStart(2, '0')}.${d.padStart(2, '0')}`;
 }
 
-/* ---- 查询（排 draft）+ 排序：order 升序，再按日期倒序（order 缺省视同最大值）---- */
+/* ---- 查询（排 draft）+ 排序：order 升序，再按日期正序（早的在前；order 缺省视同最大值）---- */
 const published = await getPublishedSeries();
 function orderKey(e: (typeof published)[number]): number {
   return Number.isFinite(e.data.order) ? e.data.order : Number.MAX_SAFE_INTEGER;
 }
 const ordered = [...published].sort((a, b) => {
   const byOrder = orderKey(a) - orderKey(b);
-  return byOrder !== 0 ? byOrder : b.data.date.getTime() - a.data.date.getTime();
+  return byOrder !== 0 ? byOrder : a.data.date.getTime() - b.data.date.getTime();
 });
 
 /* ---- 逐行数据：册号 / 题名 / 日期 / 张数 / 封面缩略图 ---- */

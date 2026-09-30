@@ -63,9 +63,11 @@ public_folder: /uploads
 # -----------------------------------------------------------------------------
 # 内容模型：frontmatter 字段与 src/content/schemas.ts 的 strict schema **逐字对齐**，
 # 多写一个键、少写一个键都会让下一次 `npm run build` 在 zod .strict() 上崩。
-# 唯一例外是名为 body 的正文字段：它不进 frontmatter（见顶部 ✍️ 段），
-# 由 tests/unit/decap-cms.test.ts 钉成断言（含「按 widget 造样本 frontmatter
-# → 过真 schema」的往返用例）。
+# 两个刻意的例外（都由 tests/unit/decap-cms.test.ts 钉住）：
+#   1) 名为 body 的正文字段：声明在 fields 里但**不进** frontmatter（见顶部 ✍️ 段）；
+#   2) 系列的 order：schema 里必填，但表单里**不放**字段——它由集合的 `reorder: true`
+#      自动维护（拖拽排序时重写 1..N，新建条目自动 max+1）。
+# 另有「按 widget 造样本 frontmatter → 过真 schema」的往返用例兜底。
 # 条目标识（系列目录名 / 随笔文件名）走路径输入框，不需要额外 slug/summary 字段。
 # -----------------------------------------------------------------------------
 collections:
@@ -92,6 +94,10 @@ collections:
     format: yaml-frontmatter
     slug: '{{fields.title}}'
     summary: '{{fields.title}}'
+    # 拖拽排序：列表页右上「重新排序条目」→ 拖动或用每行的 上移/下移 → 「完成排序」。
+    # 引擎会把 1..N 的整数自动写进 frontmatter 的 `order` 键（所以表单里**不再**放 order 字段，
+    # 免得人手打数字打撞号）；新建条目自动拿 max+1 接在最后，普通编辑保存不会丢掉 order。
+    reorder: true
     # 封面/正文插图都按「相对本条目」处理（详见顶部 🔒 段）。
     media_folder: ''
     public_folder: ''
@@ -129,14 +135,6 @@ collections:
           name: tag
           label: 标签
           widget: string
-
-      - name: order
-        label: 排序权重（数字，越小越靠前）
-        widget: number
-        value_type: int
-        step: 1
-        min: 0
-        default: 1
 
       - name: draft
         label: 草稿开关

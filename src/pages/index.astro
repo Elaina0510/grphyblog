@@ -195,7 +195,8 @@ function orderKey(e: (typeof publishedSeries)[number]): number {
 const latestSeries: SeriesCard[] = [...publishedSeries]
   .sort((a, b) => {
     const byOrder = orderKey(a) - orderKey(b);
-    return byOrder !== 0 ? byOrder : b.data.date.getTime() - a.data.date.getTime();
+    // 与系列目录页同口径：order 相同（或缺失）时按日期正序，早的在前。
+    return byOrder !== 0 ? byOrder : a.data.date.getTime() - b.data.date.getTime();
   })
   .slice(0, LATEST_SERIES_N)
   .map((entry) => {

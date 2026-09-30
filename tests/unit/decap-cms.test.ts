@@ -268,18 +268,28 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     }
   });
 
-  it('series 字段集合 == seriesSchema 键集合（不多不少，顺序也一致）', () => {
+  it('series 字段集合 == seriesSchema 键去掉 order（order 归拖拽排序管）', () => {
     const fromSource = schemaKeysFromSource('seriesSchema');
     expect(fromSource, '没能从 schemas.ts 抠出 seriesSchema 键，用例前提破了').toBeTruthy();
     const zodKeys = Object.keys((seriesSchema as unknown as { shape: Record<string, unknown> }).shape);
     expect(fromSource).toEqual(zodKeys);
     const series = collectionByName('series');
-    expect(frontmatterFieldNames(series)).toEqual(fromSource);
+    // order 是 schema 必填键，但**不出现**在表单里：它由下面的 reorder 自动写（见下一条用例）。
+    expect(frontmatterFieldNames(series)).toEqual(fromSource.filter((k) => k !== 'order'));
     expect(frontmatterFieldNames(series).sort()).toEqual(
-      ['cover', 'date', 'draft', 'order', 'tags', 'title'].sort(),
+      ['cover', 'date', 'draft', 'tags', 'title'].sort(),
     );
     // 正文只多一个 body，且排在表单最后（表单顺序 = 用户看到的顺序）。
-    expect(fieldNames(series)).toEqual([...fromSource, 'body']);
+    expect(fieldNames(series)).toEqual([...frontmatterFieldNames(series), 'body']);
+  });
+
+  // 排序改成列表页拖拽：集合开 reorder 后，引擎把 1..N 写进 frontmatter 的 order 键，
+  // 用户不再手打权重（实测 0.221.0：留着 number 字段时，新建条目要么撞 default、要么被必填拦）。
+  it('系列开 reorder（拖拽排序自动维护 order），随笔不开（按时间倒序）', () => {
+    const series = collectionByName('series');
+    expect(series.reorder, '系列该开拖拽排序').toBe(true);
+    expect(fieldNames(series), 'order 不该再是可手打的字段').not.toContain('order');
+    expect(collectionByName('posts').reorder, '随笔按日期排，不该开拖拽').toBeUndefined();
   });
 
   it('posts 字段集合 == postsSchema 键集合（随笔没有 order）', () => {
@@ -324,14 +334,11 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
     }
   });
 
-  it('draft 是 boolean 开关（发布/撤下）、order 是 number（排序）', () => {
+  it('draft 是 boolean 开关（发布/撤下）', () => {
     const series = collectionByName('series');
     const draft = series.fields.find((f) => f.name === 'draft');
-    const order = series.fields.find((f) => f.name === 'order');
     expect(draft?.widget).toBe('boolean');
     expect(draft?.default).toBe(false);
-    expect(order?.widget).toBe('number');
-    expect(order?.value_type).toBe('int');
     expect(postsHasNoOrder(collectionByName('posts'))).toBe(true);
   });
 
@@ -353,6 +360,8 @@ describe('collections · 与 content-model strict schema 逐字对齐（任务 4
         if (field.name === 'body') continue;
         data[field.name] = sampleValueFor(field);
       }
+      // 开了 reorder 的集合：order 由引擎自动写（表单里没有该字段），样本要按落盘实况补上。
+      if (c.reorder === true) data.order = 1;
       const schema = c.name === 'series' ? seriesSchema : postsSchema;
       const parsed = schema.safeParse(data);
       expect(
