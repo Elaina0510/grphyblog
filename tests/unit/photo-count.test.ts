@@ -1,105 +1,74 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  countDisplayWebp,
-  countPhotosFromSidecar,
-  resolveSeriesCount,
-} from '../../src/utils/photoCount';
-import type { PhotoEntry, PhotoSidecar } from '../../src/types/photoSidecar';
+import { countEntryPhotos, resolveSeriesCount } from '../../src/utils/photoCount';
 
 // =============================================================================
-// home-page §4.2 测试点 1：张数共享工具函数（纯计算、可注入 fs/告警、无副作用）
+// 照片池化 · G1（admin-v2.md "清理死代码"）：张数唯一口径 = photos.length
 //
-// 口径钉死：sidecar 优先（数组长度，含空数组）；缺 sidecar 才兜底数展示图（排除 .thumb.webp）
-// 并回调一条含条目 id 的告警。resolveSeriesCount 不 import fs/console，是纯函数。
+// 池化后照片只有一份全局 sidecar，条目侧只保存照片 ID 列表，于是——
+//   · 张数 = frontmatter `photos` 的长度（顺序无关，重复 ID 也照数，那是内容问题不是口径问题）；
+//   · 「缺 sidecar 就数 photos/ 下的展示图」的兜底分支连同它的告警一起删除（K4）：
+//     入参里再传 files / onWarn 也不再有任何作用，**不许**悄悄退回数文件。
 // =============================================================================
 
-/** 造一个结构合法的 PhotoEntry（只关心 file，其余给占位即可）。 */
-function photo(file: string): PhotoEntry {
-  return {
-    file,
-    thumb: file.replace(/\.webp$/, '.thumb.webp'),
-    width: 2560,
-    height: 1707,
-    thumbWidth: 800,
-    thumbHeight: 533,
-    exif: {},
-  };
-}
-
-describe('countPhotosFromSidecar · sidecar 长度即张数', () => {
-  it('数组 → 长度', () => {
-    const sidecar: PhotoSidecar = [photo('photos/a.webp'), photo('photos/b.webp')];
-    expect(countPhotosFromSidecar(sidecar)).toBe(2);
+describe('countEntryPhotos · photos 列表长度即张数', () => {
+  it('照片 ID 数组 → 长度', () => {
+    expect(countEntryPhotos(['night-01.webp', 'night-02.webp'])).toBe(2);
   });
-  it('空数组 → 0', () => expect(countPhotosFromSidecar([])).toBe(0));
-  it('null / undefined → 0（不当 sidecar 用）', () => {
-    expect(countPhotosFromSidecar(null)).toBe(0);
-    expect(countPhotosFromSidecar(undefined)).toBe(0);
+
+  it('空数组 → 0（0 图条目是合法内容，如 wip-empty）', () => {
+    expect(countEntryPhotos([])).toBe(0);
+  });
+
+  it('null / undefined / 非数组 → 0（脏 frontmatter 不许让构建崩）', () => {
+    expect(countEntryPhotos(null)).toBe(0);
+    expect(countEntryPhotos(undefined)).toBe(0);
+    expect(countEntryPhotos('night-01.webp' as unknown as string[])).toBe(0);
+    expect(countEntryPhotos({ length: 3 } as unknown as string[])).toBe(0);
+  });
+
+  it('重复 ID 照数（张数只回答「列表有几项」，去重是内容侧的活）', () => {
+    expect(countEntryPhotos(['a.webp', 'a.webp'])).toBe(2);
   });
 });
 
-describe('countDisplayWebp · 兜底计数（排除缩略图）', () => {
-  it('成对的 a.webp + a.thumb.webp 只数 1 张', () => {
-    const files = [
-      'series/x/photos/a.webp',
-      'series/x/photos/a.thumb.webp',
-      'series/x/photos/b.webp',
-      'series/x/photos/b.thumb.webp',
-    ];
-    expect(countDisplayWebp(files)).toBe(2);
-  });
-  it('忽略非 webp 文件', () => {
-    expect(countDisplayWebp(['a.webp', 'a.thumb.webp', 'readme.md', 'c.jpg'])).toBe(1);
-  });
-  it('大小写不敏感', () => {
-    expect(countDisplayWebp(['A.WEBP', 'A.THUMB.WEBP'])).toBe(1);
-  });
-  it('空数组 / 非数组 → 0', () => {
-    expect(countDisplayWebp([])).toBe(0);
-    expect(countDisplayWebp(undefined as unknown as string[])).toBe(0);
-  });
-});
-
-describe('resolveSeriesCount · 优先/兜底/告警（纯函数、无 console 副作用）', () => {
-  it('有 sidecar：返回长度，既不告警也不数文件', () => {
-    const warn = vi.fn();
-    const n = resolveSeriesCount({
-      sidecar: [photo('photos/a.webp'), photo('photos/b.webp'), photo('photos/c.webp')],
-      files: ['should/be/ignored.webp'],
-      entryId: 'city-lights',
-      onWarn: warn,
-    });
-    expect(n).toBe(3);
-    expect(warn).not.toHaveBeenCalled();
+describe('resolveSeriesCount · 只剩 photos 一个事实源（G1 / K4）', () => {
+  it('{ photos } → 长度', () => {
+    expect(resolveSeriesCount({ photos: ['a.webp', 'b.webp', 'c.webp'] })).toBe(3);
   });
 
-  it('空数组 sidecar：据实返回 0，且不告警（sidecar 是事实源，非缺失）', () => {
-    const warn = vi.fn();
-    expect(resolveSeriesCount({ sidecar: [], files: ['photos/a.webp'], entryId: 'x', onWarn: warn })).toBe(0);
-    expect(warn).not.toHaveBeenCalled();
+  it('photos 缺省 → 0', () => {
+    expect(resolveSeriesCount({})).toBe(0);
+    expect(resolveSeriesCount({ photos: null })).toBe(0);
   });
 
-  it('缺 sidecar(null)：兜底数展示图（排除 thumb）并触发一次含 id 的告警', () => {
-    const msgs: string[] = [];
-    const n = resolveSeriesCount({
-      sidecar: null,
-      files: ['series/y/photos/a.webp', 'series/y/photos/a.thumb.webp', 'series/y/photos/b.webp'],
-      entryId: 'y-series',
-      onWarn: (m) => msgs.push(m),
-    });
-    expect(n).toBe(2);
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain('y-series');
+  it('不再接受兜底入参：只给 files 不给 photos → 0（绝不回退去数文件）', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const legacyInput = {
+        files: ['series/y/photos/a.webp', 'series/y/photos/a.thumb.webp'],
+        entryId: 'y-series',
+        onWarn: () => {},
+      } as unknown as Parameters<typeof resolveSeriesCount>[0];
+      expect(resolveSeriesCount(legacyInput)).toBe(0);
+      // 旧的「缺 sidecar 告警」也不该再发出来（死代码已删，函数是纯的）
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
-  it('缺 sidecar(undefined) 且无文件：返回 0 并告警', () => {
-    const warn = vi.fn();
-    expect(resolveSeriesCount({ sidecar: undefined, files: [], entryId: 'empty', onWarn: warn })).toBe(0);
-    expect(warn).toHaveBeenCalledTimes(1);
-  });
-
-  it('不注入 onWarn 也能安全兜底（不外泄全局副作用）', () => {
-    expect(resolveSeriesCount({ sidecar: null, files: ['a.webp', 'a.thumb.webp'], entryId: 'z' })).toBe(1);
+  it('纯函数：不读盘、不发 console（计数器只看入参）', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      resolveSeriesCount({ photos: ['x.webp'] });
+      resolveSeriesCount({ photos: [] });
+      expect(warn).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });

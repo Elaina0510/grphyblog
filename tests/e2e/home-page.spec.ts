@@ -1,8 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { expect, test } from '@playwright/test';
+
+import { seriesPhotos } from './helpers/pool';
 
 // =============================================================================
 // home-page §4.2 测试点 2（选 A：Playwright e2e，沿用现有 build+preview webServer）
@@ -15,8 +13,6 @@ import { expect, test } from '@playwright/test';
 //   - 无 /visual-demo 之外的意外链接
 //   - 移动端 375：跨页与卡片归一单列、图版不撑破横向
 // =============================================================================
-
-const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
   test('四个区都在，且 draft 条目不出现在公开列表', async ({ page }) => {
@@ -66,12 +62,10 @@ test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
     expect(eager, '只允许首屏 LCP 那一张 eager').toBe(1);
   });
 
-  test('系列卡片张数 == sidecar 实际帧数', async ({ page }) => {
+  test('系列卡片张数 == 该系列 photos[] 的帧数（池化后口径）', async ({ page }) => {
     await page.goto('/');
-    const sidecar = JSON.parse(
-      readFileSync(resolve(ROOT, 'src/content/series/city-lights/photos.meta.json'), 'utf8'),
-    ) as unknown[];
-    const expected = sidecar.length; // 当前 = 2
+    // 照片池化后张数口径 = frontmatter photos.length（帧序列由池 sidecar 提供真宽高）
+    const expected = seriesPhotos('city-lights').length; // 当前 = 2
     expect(expected).toBeGreaterThan(0);
 
     const cityCard = page
@@ -81,7 +75,9 @@ test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
     await expect(cityCard).toContainText(`${expected} 帧`);
   });
 
-  test('精选入口：页码片帧号 + 链到对应系列详情', async ({ page }) => {
+  test('精选入口：页码片帧号 + 链到照片所属系列的详情（D4：按照片反查归属条目）', async ({
+    page,
+  }) => {
     await page.goto('/');
     const featured = page.locator('section[aria-label="精选"]');
     await expect(featured.locator('.frame-chip').first()).toHaveText(/01 \/ 02/);

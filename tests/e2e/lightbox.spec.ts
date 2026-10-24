@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
+import { seriesPhotos } from './helpers/pool';
+
 // =============================================================================
 // lightbox 模块 · 灯箱 E2E（打 astro build + astro preview 的真实静态产物）
 //
@@ -61,19 +63,20 @@ const readJson = <T>(rel: string): T =>
 type Sidecar = Array<{ file: string; thumb: string; width: number; height: number }>;
 
 /* 首页：帧 = 精选挑图按展示图去重（开场图与精选首图同图 → 共享同一帧索引） */
-const site = readJson<{ featured: { photos: Array<{ file: string }> } }>('src/data/site.json');
-const HOME_FRAMES = [...new Set(site.featured.photos.map((p) => p.file))].length;
+const site = readJson<{ featured: { photos: Array<{ photo: string }> } }>('src/data/site.json');
+const HOME_FRAMES = [...new Set(site.featured.photos.map((p) => p.photo))].length;
 
-/* 系列详情：帧 = sidecar 全部条目（封面 + 照片流各出现一次，不重复） */
-const SERIES_SIDECAR = readJson<Sidecar>('src/content/series/city-lights/photos.meta.json');
+/* 系列详情：帧 = 该系列 photos[] 在照片池里查到的条目（封面 + 照片流各出现一次，不重复） */
+const SERIES_SIDECAR = seriesPhotos('city-lights');
 
-/* 随笔详情：帧 = 正文真引用的插图（去重） */
+/* 随笔详情：帧 = 正文真引用的插图（photo:<ID> 语法，去重） */
 const POST_SLUG = '2026-09-21-morning-fog';
-const POST_BODY = readFileSync(resolve(ROOT, `src/content/posts/${POST_SLUG}.md`), 'utf8').replace(
-  /^---[\s\S]*?---/,
-  '',
-);
-const POST_REFS = [...new Set([...POST_BODY.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)].map((m) => m[1]))];
+const POST_BODY = readFileSync(resolve(ROOT, `src/content/posts/${POST_SLUG}.md`), 'utf8')
+  .replace(/^---[\s\S]*?---/, '')
+  // 剥掉代码块 / 行内代码：正文里讲解 `photo:` 语法的示例不算真引用
+  .replace(/```[\s\S]*?```/g, ' ')
+  .replace(/`[^`]*`/g, ' ');
+const POST_REFS = [...new Set([...POST_BODY.matchAll(/!\[[^\]]*\]\(photo:([^)\s]+)/g)].map((m) => m[1]))];
 
 const ENTRIES: Entry[] = [
   {
@@ -143,18 +146,21 @@ async function assignedImageSrcs(page: Page): Promise<string[]> {
   return list.map(basename);
 }
 
-/** 观察首张图版 <img> 的 style 变化：断言 View Transition 命名真的发生并被清掉。 */
-async function watchPlateStyle(page: Page): Promise<void> {
-  await page.evaluate(() => {
+/** 观察指定帧图版 <img> 的 style 变化：断言 View Transition 命名真的发生并被清掉。 */
+async function watchPlateStyle(page: Page, which = 0): Promise<void> {
+  await page.evaluate((index) => {
     const holder = window as unknown as { __plateStyles: string[] };
     holder.__plateStyles = [];
-    const img = document.querySelector('figure[data-lightbox] img');
+    // 与 openByClick 同一张图版：按帧号取（封面未必是 photos[0]，DOM 顺序也不等于帧序）
+    const img = document.querySelector(
+      `figure[data-lightbox][data-lightbox-index="${index}"] img`,
+    );
     if (!img) return;
     const obs = new MutationObserver(() => {
       holder.__plateStyles.push(img.getAttribute('style') ?? '');
     });
     obs.observe(img, { attributes: true, attributeFilter: ['style'] });
-  });
+  }, which);
 }
 
 async function plateStyles(page: Page): Promise<string[]> {
@@ -168,8 +174,13 @@ async function attr(page: Page, selector: string, name: string): Promise<string>
   return value ?? '';
 }
 
+/**
+ * 开灯箱：按 **data-lightbox-index** 选图版（which = 灯箱帧号），不按 DOM 顺序挑。
+ * 池化后封面不一定是 photos[0]（D1：封面 = cover 指定的照片 ID），于是封面那张可能
+ * 不是第 1 帧、也可能在 DOM 里排在流前面——灯箱里点哪张开哪一帧，故这里按帧号定位。
+ */
 async function openByClick(page: Page, which = 0): Promise<Locator> {
-  const plate = plates(page).nth(which);
+  const plate = page.locator(`figure[data-lightbox][data-lightbox-index="${which}"]`).first();
   await plate.click();
   await expect(page.locator(SHELL), '点图版后灯箱没开').toBeVisible();
   return plate;
@@ -443,9 +454,13 @@ for (const entry of ENTRIES) {
       expect(Number.isNaN(start)).toBe(false);
 
       if (entry.multi) {
-        await page.keyboard.press('ArrowRight');
-        await expect(img).toHaveAttribute('data-lb-frame', String(start + 1));
-        await page.keyboard.press('ArrowLeft');
+        // Tab 落到的图版未必是第 1 帧（封面可以是任意 photos[i]，见 openByClick）：
+        // 朝「还有下一帧」的方向切一次，再切回来，两头都把键盘路径走全。
+        const forward = start + 1 < frames.length;
+        const target = forward ? start + 1 : start - 1;
+        await page.keyboard.press(forward ? 'ArrowRight' : 'ArrowLeft');
+        await expect(img).toHaveAttribute('data-lb-frame', String(target));
+        await page.keyboard.press(forward ? 'ArrowLeft' : 'ArrowRight');
         await expect(img).toHaveAttribute('data-lb-frame', String(start));
       }
 
@@ -671,7 +686,8 @@ test.describe('移动端 375 · 触摸目标与手势（桌面模拟）', () => 
 
   test('左右滑切帧 + 下滑关闭（触摸型指针事件）', async ({ page }) => {
     await page.goto('/series/city-lights/');
-    await plates(page).first().tap();
+    // 按帧号开在第 1 帧（封面未必是 photos[0]，见 openByClick 说明）
+    await page.locator('figure[data-lightbox][data-lightbox-index="0"]').first().tap();
     await expect(page.locator(IMAGE)).toHaveAttribute('data-lb-frame', '0');
 
     const swipe = (dx: number, dy: number) =>

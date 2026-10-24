@@ -27,7 +27,7 @@ import {
   entryResourceDir,
   resolveContentImage,
 } from '../../src/utils/contentImages';
-import { SIZE_BUDGET, runImport } from '../../scripts/import-photos.mjs';
+import { SIZE_BUDGET, runImport, runMigration } from '../../scripts/import-photos.mjs';
 
 // ============================================================================
 // import-photos 的「真实管线」集成测（§4.3：打真实依赖，不许 mock 到失真）。
@@ -544,38 +544,49 @@ describe('原图保护：raw/ 只读（任务 11 + §7 硬约束）', () => {
   });
 });
 
-describe('全仓 sidecar 口径统一（种子内容已回填宽高，灯箱/页面可直接取数）', () => {
+describe('全仓 sidecar 口径统一（池化后只有一份全局 sidecar，灯箱/页面可直接取数）', () => {
   /** 递归收集 src/content 下所有 photos.meta.json。 */
   function findSidecars(dir, acc = []) {
-    for (const dirent of readdirSync(dir, { withFileTypes: true })) {
+    let dirents;
+    try {
+      dirents = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return acc;
+    }
+    for (const dirent of dirents) {
       const abs = path.join(dir, dirent.name);
-      if (dirent.isDirectory()) findSidecarList(abs, acc);
+      if (dirent.isDirectory()) findSidecars(abs, acc);
       else if (dirent.name === 'photos.meta.json') acc.push(abs);
     }
     return acc;
   }
 
-  function findSidecarList(dir, acc) {
-    findSidecars(dir, acc);
-    return acc;
-  }
-
   const sidecarFiles = findSidecars(path.join(ROOT, 'src', 'content'));
+  const relOf = (f) => path.relative(ROOT, f).split(path.sep).join('/');
 
-  it('至少覆盖两处种子条目（city-lights 与 morning-fog）', () => {
-    expect(sidecarFiles.length).toBeGreaterThanOrEqual(2);
-    const rel = sidecarFiles.map((f) => path.relative(ROOT, f).split(path.sep).join('/'));
-    expect(rel).toContain('src/content/series/city-lights/photos.meta.json');
-    expect(rel).toContain('src/content/posts/2026-09-21-morning-fog/photos.meta.json');
+  it('全仓只剩一份 sidecar：src/content/pool/photos.meta.json（旧条目的 5 份已合并删除）', () => {
+    expect(sidecarFiles.map(relOf)).toEqual(['src/content/pool/photos.meta.json']);
   });
 
-  it.each(sidecarFiles.map((f) => [path.relative(ROOT, f).split(path.sep).join('/')]))(
+  it('全局 sidecar 覆盖种子照片（city-lights 的两帧与 morning-fog 的 dawn-01 都在）', () => {
+    const ids = new Set(
+      readSidecarFile(sidecarFiles[0]).map((entry) => path.basename(entry.file)),
+    );
+    for (const id of ['night-01.webp', 'night-02.webp', 'P1230857.webp', 'dawn-01.webp']) {
+      expect(ids.has(id), `全局 sidecar 缺 ${id}`).toBe(true);
+    }
+    expect(ids.size).toBe(readSidecarFile(sidecarFiles[0]).length);
+  });
+
+  it.each(sidecarFiles.map((f) => [relOf(f)]))(
     '%s 的每条记录都带 file/thumb/四项宽高/exif 七键，且宽高与盘上产物一致',
     async (rel) => {
       const abs = path.join(ROOT, rel);
+      // 池口径：sidecar 在 pool/ 根，file/thumb 是池内相对路径 photos/x.webp
       const entryDir = path.dirname(abs);
       const sidecar = readSidecarFile(abs);
       expect(Array.isArray(sidecar)).toBe(true);
+      expect(sidecar.length).toBeGreaterThan(0);
       for (const entry of sidecar) {
         expect(Object.keys(entry).sort()).toEqual([
           'exif',
@@ -595,6 +606,7 @@ describe('全仓 sidecar 口径统一（种子内容已回填宽高，灯箱/页
           'lens',
           'shutter',
         ]);
+        expect(entry.file.startsWith('photos/'), `${entry.file} 应为池内相对路径`).toBe(true);
         const display = await sharp(path.join(entryDir, entry.file)).metadata();
         const thumb = await sharp(path.join(entryDir, entry.thumb)).metadata();
         expect([entry.width, entry.height]).toEqual([display.width, display.height]);
@@ -605,12 +617,13 @@ describe('全仓 sidecar 口径统一（种子内容已回填宽高，灯箱/页
 });
 
 describe('脚本产物能被下游 contentImages 解析成可服务 URL（glob 不漏收）', () => {
-  it('真实导入的系列与随笔产物都在构建期映射表里', () => {
+  it('池里的照片在构建期映射表里，旧条目相对路径经池兜底也能命中', () => {
     for (const [entryDir, rel] of [
       ['series/daily-frames', 'photos/P1230857.webp'],
       ['series/daily-frames', 'photos/P1230857.thumb.webp'],
       ['posts/2026-08-10-foggy-morning', 'photos/P1230857.webp'],
       ['posts/2026-08-10-foggy-morning', 'photos/P1230857.thumb.webp'],
+      ['pool', 'photos/P1230857.webp'],
     ]) {
       expect(resolveContentImage(entryDir, rel), `${entryDir}/${rel}`).toBeTypeOf('string');
       const url = contentImageUrl(entryDir, rel, { base: 'https://cdn.example/' });
@@ -619,7 +632,12 @@ describe('脚本产物能被下游 contentImages 解析成可服务 URL（glob �
     }
   });
 
-  it('每条 sidecar 记录的 file/thumb 都能被 entryResourceDir + resolveContentImage 命中', () => {
+  it('全局 sidecar 每条 file/thumb 都能命中池路径；各条目的 photos[] 也都能解析', () => {
+    const poolSidecar = readSidecarFile(path.join(ROOT, 'src', 'content', 'pool', 'photos.meta.json'));
+    for (const entry of poolSidecar) {
+      expect(resolveContentImage('pool', entry.file), `pool/${entry.file}`).toBeTypeOf('string');
+      expect(resolveContentImage('pool', entry.thumb), `pool/${entry.thumb}`).toBeTypeOf('string');
+    }
     const pairs = [
       ['series', 'city-lights/index.md'],
       ['posts', '2026-09-21-morning-fog.md'],
@@ -628,10 +646,15 @@ describe('脚本产物能被下游 contentImages 解析成可服务 URL（glob �
     ];
     for (const [collection, id] of pairs) {
       const dir = entryResourceDir(collection, id);
-      const sidecar = readSidecarFile(path.join(ROOT, 'src', 'content', `${dir}`, 'photos.meta.json'));
-      for (const entry of sidecar) {
-        expect(resolveContentImage(dir, entry.file), `${dir}/${entry.file}`).toBeTypeOf('string');
-        expect(resolveContentImage(dir, entry.thumb), `${dir}/${entry.thumb}`).toBeTypeOf('string');
+      const markdownPath =
+        collection === 'series'
+          ? path.join(ROOT, 'src', 'content', dir, 'index.md')
+          : path.join(ROOT, 'src', 'content', 'posts', `${id.replace(/\.md$/, '')}.md`);
+      const data = parseFrontmatterFull(readFileSync(markdownPath, 'utf8'));
+      const photos = Array.isArray(data.photos) ? (data.photos as string[]) : [];
+      expect(photos.length, `${dir} 的 photos[] 不该为空`).toBeGreaterThan(0);
+      for (const photoId of photos) {
+        expect(resolveContentImage(dir, photoId), `${dir}/${photoId}`).toBeTypeOf('string');
       }
     }
   });
@@ -659,7 +682,8 @@ describe('CLI 入口（npm run import）：错误路径不写盘（任务 9/12�
     const before = snapshotContent();
     const r = runCli(['--help']);
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('用法：npm run import -- --series');
+    expect(r.stdout).toContain('用法：npm run import -- [--pool]');
+    expect(r.stdout).toContain('--migrate');
     expect(r.stdout).toContain('原图始终留在 raw/ 原地不动');
     expect(snapshotContent()).toEqual(before);
   });
@@ -669,6 +693,9 @@ describe('CLI 入口（npm run import）：错误路径不写盘（任务 9/12�
     [['--series'], /缺少取值/],
     [['--series', '../escape'], /不能包含路径分隔符/],
     [['--series', 'a', '--post', 'b'], /不能同时使用/],
+    [['--pool', '--series', 'a'], /不能同时使用/],
+    [['--migrate', '--pool'], /不能与/],
+    [['--migrate=oops'], /未知的迁移步骤/],
   ])('CLI 参数错误 %j 以 1 退出且不写盘', (args, pattern) => {
     const before = snapshotContent();
     const r = runCli(args);
@@ -677,11 +704,12 @@ describe('CLI 入口（npm run import）：错误路径不写盘（任务 9/12�
     expect(snapshotContent()).toEqual(before);
   });
 
-  it('无参数且非交互终端（stdin 不是 TTY）→ 以 1 退出并教怎么写，不写盘', () => {
+  it('--ask 且 stdin 不是 TTY → 以 1 退出并教怎么写，不写盘（不带参数时默认进池，不再问）', () => {
     const before = snapshotContent();
-    const r = runCli([], { input: '' });
+    const r = runCli(['--ask'], { input: '' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('不是可交互的终端');
+    expect(r.stderr).toContain('--pool');
     expect(r.stderr).toContain('--series');
     expect(snapshotContent()).toEqual(before);
   });
@@ -828,5 +856,361 @@ describe('raw/ 里的目录与非图片文件被跳过（清单不受影响）',
     expect(result.manifest.addedCount).toBe(3);
     expect(result.manifest.failedCount).toBe(0);
     expect(existsSync(path.join(tmpRaw(), 'a-subdir'))).toBe(true);
+  }, 300_000);
+});
+
+// ============================================================================
+// 池化（admin-v2.md B1 / B2）：默认进池的导入通道 + 四步迁移
+// ============================================================================
+
+/** 带块序列支持的 frontmatter 解析（photos 写成 `photos:\n  - x.webp`）。 */
+function parseFrontmatterFull(markdown: string): Record<string, string | string[]> {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown);
+  expect(m, '缺少 frontmatter').not.toBeNull();
+  const lines = (m as RegExpMatchArray)[1].split(/\r?\n/);
+  const out: Record<string, string | string[]> = {};
+  for (let i = 0; i < lines.length; i += 1) {
+    const kv = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(lines[i]);
+    if (!kv) continue;
+    const key = kv[1];
+    const raw = kv[2].trim();
+    const items: string[] = [];
+    let j = i + 1;
+    while (j < lines.length && /^\s+-\s+/.test(lines[j])) {
+      items.push(lines[j].replace(/^\s+-\s+/, '').trim());
+      j += 1;
+    }
+    if (items.length > 0) {
+      out[key] = items;
+      i = j - 1;
+      continue;
+    }
+    if (raw.startsWith('[')) {
+      out[key] = raw
+        .replace(/^\[|\]$/g, '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else if (raw === "''" || raw === '""') {
+      out[key] = '';
+    } else {
+      out[key] = raw.replace(/^"(.*)"$/, '$1');
+    }
+  }
+  return out;
+}
+
+/** 一组合法的 PhotoEntry（宽高四项 + exif 七键，供迁移夹具用）。 */
+function poolEntryRecord(base: string, width = 2560) {
+  return {
+    file: `photos/${base}.webp`,
+    thumb: `photos/${base}.thumb.webp`,
+    width,
+    height: 1707,
+    thumbWidth: 800,
+    thumbHeight: 533,
+    exif: {
+      camera: 'Test Cam',
+      lens: null,
+      focalLength: null,
+      aperture: 2,
+      shutter: '1/125',
+      iso: 100,
+      dateTaken: '2026-01-01',
+    },
+  };
+}
+
+/** 写一张小 webp 并返回它的字节（同一份字节可写多份，保证「逐字节一致」的重复件）。 */
+async function webpBytes(seed: number): Promise<Buffer> {
+  return sharp({
+    create: {
+      width: 40,
+      height: 30,
+      channels: 3,
+      background: { r: seed % 200, g: 60, b: 120 },
+    },
+  })
+    .webp()
+    .toBuffer();
+}
+
+/** 在临时仓库根里搭一个「旧结构」条目：photos/ 两个产物 + sidecar + .md。 */
+async function seedLegacyEntry(
+  root: string,
+  collection: 'series' | 'posts',
+  id: string,
+  records: Array<ReturnType<typeof poolEntryRecord>>,
+  markdown: string,
+  bytesByBase: Map<string, Buffer>,
+) {
+  const entryDir = path.join(root, 'src', 'content', collection, id);
+  mkdirSync(path.join(entryDir, 'photos'), { recursive: true });
+  for (const record of records) {
+    for (const key of ['file', 'thumb'] as const) {
+      const base = path.basename(record[key]);
+      writeFileSync(path.join(entryDir, record[key]), bytesByBase.get(base) as Buffer);
+    }
+  }
+  writeFileSync(path.join(entryDir, 'photos.meta.json'), `${JSON.stringify(records, null, 2)}\n`, 'utf8');
+  const markdownPath =
+    collection === 'series'
+      ? path.join(entryDir, 'index.md')
+      : path.join(root, 'src', 'content', 'posts', `${id}.md`);
+  mkdirSync(path.dirname(markdownPath), { recursive: true });
+  writeFileSync(markdownPath, markdown, 'utf8');
+  return { entryDir, markdownPath };
+}
+
+describe('池模式（B1：--pool / 不带目标参数时默认进池）', () => {
+  const root = () => path.join(tmpRoot, 'pool-import-root');
+
+  it('raw/ → src/content/pool/photos/，全局 sidecar 追加，且不写任何条目 .md', async () => {
+    const lines: string[] = [];
+    const result = await runImport({
+      root: root(),
+      rawDir: tmpRaw(),
+      thumbsDir: path.join(tmpRoot, 'thumbs-pool-import'),
+      collection: 'pool',
+      only: ['sample-a', 'sample-c'],
+      log: (line: string) => lines.push(line),
+    });
+
+    expect(result.target.entryDir).toBe('pool');
+    expect(result.target.markdownPath).toBeNull();
+    expect(result.manifest.addedCount).toBe(2);
+    expect(existsSync(path.join(root(), 'src', 'content', 'pool', 'index.md'))).toBe(false);
+
+    const files = readdirSorted(path.join(root(), 'src', 'content', 'pool', 'photos'));
+    for (const base of ['sample-a', 'sample-c']) {
+      expect(files).toContain(`${base}.${IMAGE_FORMAT}`);
+      expect(files).toContain(`${base}.thumb.${IMAGE_FORMAT}`);
+    }
+
+    const sidecar = readSidecarFile(path.join(root(), 'src', 'content', 'pool', 'photos.meta.json'));
+    expect(sidecar.map((e) => e.file)).toEqual(['photos/sample-a.webp', 'photos/sample-c.webp']);
+    for (const entry of sidecar) {
+      const display = await sharp(path.join(root(), 'src', 'content', 'pool', entry.file)).metadata();
+      expect([entry.width, entry.height]).toEqual([display.width, display.height]);
+    }
+
+    // 池口的插图引用行是 D2a 的 photo: 协议，不再拼条目相对路径
+    expect(lines.filter((l) => l.startsWith('![')).sort()).toEqual([
+      '![说明](photo:sample-a.webp)',
+      '![说明](photo:sample-c.webp)',
+    ]);
+    expect(lines.join('\n')).toContain('目标：照片池');
+  }, 300_000);
+
+  it('二次跑同一批：全部跳过（池 sidecar 就是幂等判据）', async () => {
+    const again = await runImport({
+      root: root(),
+      rawDir: tmpRaw(),
+      thumbsDir: path.join(tmpRoot, 'thumbs-pool-import'),
+      collection: 'pool',
+      only: ['sample-a', 'sample-c'],
+      log: () => {},
+    });
+    expect(again.manifest.addedCount).toBe(0);
+    expect(again.manifest.skippedCount).toBe(2);
+    expect(again.manifest.allSkipped).toBe(true);
+    expect(readdirSorted(path.join(root(), 'src', 'content', 'pool', 'photos'))).toHaveLength(4);
+  }, 300_000);
+
+  it('collection 省略等价于进池（runCli 不带目标参数时也走这条）', async () => {
+    const result = await runImport({
+      root: path.join(tmpRoot, 'pool-default-root'),
+      rawDir: tmpRaw(),
+      thumbsDir: path.join(tmpRoot, 'thumbs-pool-default'),
+      only: ['sample-b'],
+      log: () => {},
+    });
+    expect(result.target.collection).toBe('pool');
+    expect(result.manifest.addedCount).toBe(1);
+  }, 300_000);
+});
+
+describe('池化迁移（B2a~B2d：move / merge / backfill / cover 四步各自可单独跑）', () => {
+  /** 建一份「一系列 + 一随笔 + 一个空条目」的旧结构仓库，含一例跨条目重复照片。 */
+  async function makeLegacyRoot(name: string, mutate?: (root: string) => void) {
+    const root = path.join(tmpRoot, name);
+    mkdirSync(path.join(root, 'src', 'content', 'pool', 'photos'), { recursive: true });
+    writeFileSync(path.join(root, 'src', 'content', 'pool', 'photos.meta.json'), '[]\n', 'utf8');
+    mkdirSync(path.join(root, 'raw'), { recursive: true });
+    writeFileSync(path.join(root, 'raw', 'keep-raw.jpg'), 'raw must not be touched');
+
+    const bytes = new Map<string, Buffer>();
+    bytes.set('shared.webp', await webpBytes(10));
+    bytes.set('shared.thumb.webp', await webpBytes(11));
+    bytes.set('alpha-01.webp', await webpBytes(12));
+    bytes.set('alpha-01.thumb.webp', await webpBytes(13));
+    bytes.set('beta-01.webp', await webpBytes(14));
+    bytes.set('beta-01.thumb.webp', await webpBytes(15));
+
+    await seedLegacyEntry(
+      root,
+      'series',
+      'alpha',
+      [poolEntryRecord('shared'), poolEntryRecord('alpha-01')],
+      [
+        '---',
+        'title: A',
+        'date: 2026-01-01',
+        'cover: photos/shared.webp',
+        'tags: []',
+        'order: 1',
+        'draft: false',
+        '---',
+        '',
+        '正文 A。',
+        '',
+      ].join('\r\n'),
+      bytes,
+    );
+    await seedLegacyEntry(
+      root,
+      'posts',
+      '2026-01-02-beta',
+      [poolEntryRecord('shared'), poolEntryRecord('beta-01')],
+      [
+        '---',
+        'title: B',
+        'date: 2026-01-02',
+        'cover: photos/beta-01.webp',
+        'tags: []',
+        'draft: false',
+        '---',
+        '',
+        '正文 B。',
+        '',
+      ].join('\n'),
+      bytes,
+    );
+    mkdirSync(path.join(root, 'src', 'content', 'series', 'empty-one'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'src', 'content', 'series', 'empty-one', 'index.md'),
+      ['---', 'title: E', 'date: 2026-01-03', 'cover: photos/tbd.webp', 'tags: []', 'order: 2', 'draft: false', '---', '', ''].join(
+        '\r\n',
+      ),
+      'utf8',
+    );
+    if (mutate) mutate(root);
+    return root;
+  }
+
+  const poolDir = (root: string) => path.join(root, 'src', 'content', 'pool', 'photos');
+  const poolSidecar = (root: string) => path.join(root, 'src', 'content', 'pool', 'photos.meta.json');
+
+  it('全四步：搬文件 + 同名去重 + sidecar 合并 + photos/cover 回填 + 坏 cover 置空串', async () => {
+    const root = await makeLegacyRoot('migrate-full');
+    const result = await runMigration({ root, log: () => {} });
+
+    // B2a：两张条目各有 4 个产物（shared 是跨条目重复），共 8 个文件
+    // → 池里 6 个唯一文件（搬 6 个），shared 的第二份按内容一致丢掉（去重 2 个）
+    expect(result.steps).toEqual(['move', 'merge', 'backfill', 'cover']);
+    expect(result.moved).toHaveLength(6);
+    expect(result.dedupedFiles).toHaveLength(2);
+    expect(result.dedupedGroups.map((g) => g.basename)).toEqual(['shared.webp']);
+    expect(readdirSorted(poolDir(root))).toEqual([
+      'alpha-01.thumb.webp',
+      'alpha-01.webp',
+      'beta-01.thumb.webp',
+      'beta-01.webp',
+      'shared.thumb.webp',
+      'shared.webp',
+    ]);
+    // 旧 photos/ 目录还在但已空（删不删由 G3 决定）
+    for (const dir of ['series/alpha', 'posts/2026-01-02-beta']) {
+      expect(readdirSorted(path.join(root, 'src', 'content', dir, 'photos'))).toEqual([]);
+    }
+
+    // B2b：一份全局 sidecar，按文件名去重后 3 条
+    expect(readSidecarFile(poolSidecar(root)).map((e) => e.file)).toEqual([
+      'photos/shared.webp',
+      'photos/alpha-01.webp',
+      'photos/beta-01.webp',
+    ]);
+    expect([...result.removedSidecars].sort()).toEqual([
+      'posts/2026-01-02-beta/photos.meta.json',
+      'series/alpha/photos.meta.json',
+    ]);
+    for (const rel of result.removedSidecars) {
+      expect(existsSync(path.join(root, 'src', 'content', rel))).toBe(false);
+    }
+
+    // B2c：photos 按原 sidecar 顺序；cover 从 photos/x.webp 换算成 x.webp
+    const alphaMd = readFileSync(path.join(root, 'src', 'content', 'series', 'alpha', 'index.md'), 'utf8');
+    const alpha = parseFrontmatterFull(alphaMd);
+    expect(alpha.photos).toEqual(['shared.webp', 'alpha-01.webp']);
+    expect(alpha.cover).toBe('shared.webp');
+    expect(alphaMd.includes('\r\n'), 'CRLF 条目的行尾必须保持').toBe(true);
+
+    const betaMd = readFileSync(path.join(root, 'src', 'content', 'posts', '2026-01-02-beta.md'), 'utf8');
+    const beta = parseFrontmatterFull(betaMd);
+    expect(beta.photos).toEqual(['shared.webp', 'beta-01.webp']);
+    expect(beta.cover).toBe('beta-01.webp');
+    expect(betaMd.includes('\r\n'), 'LF 条目不该被改写成 CRLF').toBe(false);
+
+    // B2d：cover 指向不存在的 tbd.webp + 无照片 → cover 空串、photos 空列表、留待办
+    const empty = parseFrontmatterFull(
+      readFileSync(path.join(root, 'src', 'content', 'series', 'empty-one', 'index.md'), 'utf8'),
+    );
+    expect(empty.cover).toBe('');
+    expect(empty.photos).toEqual([]);
+    expect(result.todos.some((t) => t.includes('series/empty-one'))).toBe(true);
+    expect(result.report.lines.join('\n')).toContain('待办');
+
+    // K6：raw/ 一个字节都没动
+    expect(readFileSync(path.join(root, 'raw', 'keep-raw.jpg'), 'utf8')).toBe('raw must not be touched');
+    expect(readdirSorted(path.join(root, 'raw'))).toEqual(['keep-raw.jpg']);
+  }, 300_000);
+
+  it('幂等：再跑一次全四步 → 搬 0、去重 0、markdown 一字不变', async () => {
+    const root = path.join(tmpRoot, 'migrate-full');
+    const before = readFileSync(path.join(root, 'src', 'content', 'series', 'alpha', 'index.md'), 'utf8');
+    const again = await runMigration({ root, log: () => {} });
+    expect(again.moved).toHaveLength(0);
+    expect(again.dedupedFiles).toHaveLength(0);
+    expect(again.removedSidecars).toHaveLength(0);
+    expect(again.entries.filter((e) => e.changed)).toEqual([]);
+    expect(readFileSync(path.join(root, 'src', 'content', 'series', 'alpha', 'index.md'), 'utf8')).toBe(before);
+  }, 300_000);
+
+  it('分步跑（move → merge → backfill → cover）结果与一次跑完一致', async () => {
+    const root = await makeLegacyRoot('migrate-steps');
+
+    const moved = await runMigration({ root, steps: ['move'], log: () => {} });
+    expect(moved.moved).toHaveLength(6);
+    // move 只搬文件：sidecar 一个都不删（归属信息要留给 backfill）
+    expect(existsSync(path.join(root, 'src', 'content', 'series', 'alpha', 'photos.meta.json'))).toBe(true);
+    expect(readSidecarFile(poolSidecar(root))).toEqual([]);
+
+    const merged = await runMigration({ root, steps: ['merge'], log: () => {} });
+    expect(merged.mergedCount).toBe(3);
+    expect(existsSync(path.join(root, 'src', 'content', 'series', 'alpha', 'photos.meta.json'))).toBe(true);
+
+    const backfilled = await runMigration({ root, steps: ['backfill'], log: () => {} });
+    expect(backfilled.entries).toHaveLength(3);
+    expect(backfilled.removedSidecars).toHaveLength(2);
+    const alpha = parseFrontmatterFull(
+      readFileSync(path.join(root, 'src', 'content', 'series', 'alpha', 'index.md'), 'utf8'),
+    );
+    expect(alpha.photos).toEqual(['shared.webp', 'alpha-01.webp']);
+
+    const covered = await runMigration({ root, steps: ['cover'], log: () => {} });
+    expect(covered.todos.some((t) => t.includes('empty-one'))).toBe(true);
+  }, 300_000);
+
+  it('同名但宽高/EXIF 不一致 → 迁移中止，不静默丢数据', async () => {
+    const root = await makeLegacyRoot('migrate-conflict', (dir) => {
+      // 把随笔那份 shared 记录的宽度改掉：文件名相同、元数据不同
+      const abs = path.join(dir, 'src', 'content', 'posts', '2026-01-02-beta', 'photos.meta.json');
+      const records = JSON.parse(readFileSync(abs, 'utf8'));
+      records[0].width = 1234;
+      writeFileSync(abs, JSON.stringify(records, null, 2), 'utf8');
+    });
+    await expect(runMigration({ root, log: () => {} })).rejects.toThrow(/不一致/);
+    // 中止时不该已经搬过东西
+    expect(readdirSorted(poolDir(root))).toEqual([]);
   }, 300_000);
 });

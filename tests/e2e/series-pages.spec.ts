@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
+
+import { seriesPhotos } from './helpers/pool';
 
 // =============================================================================
 // series-pages §4.2 系列页集成测（打 astro build + preview 的真实静态产物）
@@ -19,10 +19,9 @@ import { expect, test } from '@playwright/test';
 // =============================================================================
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const sidecarOf = (slug: string) =>
-  JSON.parse(
-    readFileSync(resolve(ROOT, `src/content/series/${slug}/photos.meta.json`), 'utf8'),
-  ) as Array<{ file: string; thumb: string; width: number; height: number }>;
+
+/** 该系列的帧序列（照片池化后：frontmatter photos[] → 全局 sidecar 查表，见 helpers/pool）。 */
+const sidecarOf = (slug: string) => seriesPhotos(slug);
 
 /** 解析详情页灯箱岛 JSON。 */
 async function readIsland(page: import('@playwright/test').Page, gallery: string) {

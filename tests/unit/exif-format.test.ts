@@ -143,10 +143,15 @@ describe('与 ExifCard 的口径不漂移（两处共用一条 sidecar）', () =
   });
 
   it('灯箱的 sheet 与图版说明签读的是同一份 sidecar（数据不另起来源）', () => {
+    // 池化后全站只有一份 sidecar（src/content/pool/photos.meta.json），按照片 ID 取 city-lights 那两帧。
     const sidecar = JSON.parse(
-      readFileSync(resolve(ROOT, 'src/content/series/city-lights/photos.meta.json'), 'utf8'),
-    ) as Array<{ exif: Exif }>;
-    expect(formatExifItems(sidecar[0].exif).map((i) => i.text)).toEqual([
+      readFileSync(resolve(ROOT, 'src/content/pool/photos.meta.json'), 'utf8'),
+    ) as Array<{ file: string; exif: Exif }>;
+    const night01 = sidecar.find((entry) => entry.file === 'photos/night-01.webp');
+    const night02 = sidecar.find((entry) => entry.file === 'photos/night-02.webp');
+    expect(night01, '全局 sidecar 里缺 photos/night-01.webp（迁移未跑或被改动）').toBeTruthy();
+    expect(night02, '全局 sidecar 里缺 photos/night-02.webp（迁移未跑或被改动）').toBeTruthy();
+    expect(formatExifItems(night01?.exif).map((i) => i.text)).toEqual([
       'FUJIFILM X-T5',
       'XF 56mm F1.2 R WR',
       '56mm',
@@ -155,6 +160,6 @@ describe('与 ExifCard 的口径不漂移（两处共用一条 sidecar）', () =
       'ISO800',
       '2026.09.20',
     ]);
-    expect(sidecar[1].exif.camera).toBeNull();
+    expect(night02?.exif.camera).toBeNull();
   });
 });

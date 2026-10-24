@@ -4,12 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
+import { postPhotos } from './helpers/pool';
+
 // =============================================================================
 // posts-pages §4.2 随笔页集成测（打 astro build + preview 的真实静态产物）
 //
 //   列表  —— /posts/ 行式目次按日期倒序；draft「雾起的那个早上」整篇不外泄。
 //   详情  —— /posts/<slug>/ 可访问；标题 + 日期 + 正文齐备，正文按段落渲染。
-//   管线  —— 种子正文里那句 `![说明](<资源夹>/photos/dawn-01.webp)` 在产物里必须：
+//   管线  —— 种子正文里那句 `![说明](photo:dawn-01.webp)`（D2a 新语法）在产物里必须：
 //            src = /_astro/…webp（**不是** photos/ 相对路径、**不是** /data:）+
 //            显式 width/height = sidecar 展示图真值 + 被包成灯箱图版。
 //   契约  —— script.lightbox-frames[data-gallery="post-<slug>"] 岛：frames 数 == 正文引用的
@@ -26,16 +28,19 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const SLUG = '2026-09-21-morning-fog';
 const GALLERY = `post-${SLUG}`;
 
-const sidecarOf = (slug: string) =>
-  JSON.parse(
-    readFileSync(resolve(ROOT, `src/content/posts/${slug}/photos.meta.json`), 'utf8'),
-  ) as Array<{ file: string; thumb: string; width: number; height: number }>;
+/** 该随笔的插图（照片池化后：frontmatter photos[] → 全局 sidecar 查表，见 helpers/pool）。 */
+const sidecarOf = (slug: string) => postPhotos(slug);
 
 /** 某篇随笔正文引用的内联插图（去重后的文件名 = 应占的灯箱帧数）。 */
 function bodyImageRefs(slug: string): string[] {
   const md = readFileSync(resolve(ROOT, `src/content/posts/${slug}.md`), 'utf8');
-  const body = md.replace(/^---[\s\S]*?---/, '');
-  const refs = [...body.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)]
+  // 去掉 frontmatter，并剥掉代码块/行内代码：正文里讲解插图语法的示例不该被当成真引用
+  const body = md
+    .replace(/^---[\s\S]*?---/, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ');
+  // 新语法 ![说明](photo:照片ID)：取 photo: 后面的照片 ID，去重 = 应占的灯箱帧数
+  const refs = [...body.matchAll(/!\[[^\]]*\]\(photo:([^)\s]+)/g)]
     .map((m) => (m[1].split('/').pop() ?? '').trim())
     .filter(Boolean);
   return [...new Set(refs)];

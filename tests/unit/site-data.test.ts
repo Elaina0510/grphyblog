@@ -100,21 +100,30 @@ describe('site.json · 页脚 / 版权页 / 联系与社交', () => {
     expect(Array.isArray(site.indexNote.lines)).toBe(true);
   });
 
-  it('精选区已由 home-page 填充：每项 {collection,id,file,title} 且指向已发布（非 draft）系列', () => {
+  it('精选区已由 home-page 填充：每项 {photo,title,alt} 且照片 ID 真在照片池 sidecar 里（D4/K3）', () => {
     const { photos } = site.featured;
     expect(Array.isArray(photos)).toBe(true);
     expect(photos.length).toBeGreaterThan(0);
+
+    // 池化后 featured 只存照片 ID + 人工文案；collection/id/file 三元组已废除
+    const pool = JSON.parse(
+      readFileSync(resolve(ROOT, 'src/content/pool/photos.meta.json'), 'utf8'),
+    ) as Array<{ file: string }>;
+    const poolIds = new Set(pool.map((p) => p.file.split('/').pop()));
+
     for (const p of photos) {
-      for (const key of ['collection', 'id', 'file', 'title']) {
-        expect(p, `精选项缺 ${key}`).toHaveProperty(key);
+      expect(Object.keys(p).sort()).toEqual(['alt', 'photo', 'title']);
+      for (const key of ['photo', 'title', 'alt']) {
         expect(typeof p[key]).toBe('string');
         expect(p[key].length).toBeGreaterThan(0);
       }
-      expect(p.collection).toBe('series');
-      // 公开精选不得引用草稿条目（daily-frames 是 draft:true）
-      expect(p.id).not.toBe('daily-frames');
-      // file 是内容相对展示图（过 imageUrl 出口用）
-      expect(p.file).toMatch(/^photos\/.+\.(webp)$/);
+      // photo = 池内照片 ID（完整文件名含 .webp，不带目录）
+      expect(p.photo).toMatch(/^[^/\\]+\.webp$/);
+      expect(poolIds.has(p.photo), `精选照片 ${p.photo} 不在照片池 sidecar 里`).toBe(true);
+      // 旧三元组字段不许回流
+      expect(p).not.toHaveProperty('collection');
+      expect(p).not.toHaveProperty('id');
+      expect(p).not.toHaveProperty('file');
     }
   });
 });
