@@ -1,5 +1,5 @@
 ---
-title: 夜光 · 城市666
+title: 夜光 · 城市
 date: 2026-09-20
 cover: night-02.webp
 tags:
