@@ -7,9 +7,17 @@
 //   ③ EXIF sidecar photos.meta.json    PhotoEntry[]（file/thumb/宽高/exif；顺序即灯箱帧序列）
 // 落到 src/content/<series|posts>/<标识>/；条目或 .md 不存在则以 draft:true 当场新建。
 //
+// 照片池化（admin-v2.md A/B 组，2026-10 拍板）：
+//   照片唯一位置 src/content/pool/photos/（展示版 <base>.webp + 缩略图 <base>.thumb.webp 同目录），
+//   唯一元数据 src/content/pool/photos.meta.json（PhotoEntry[] 全局一份），
+//   照片 ID = 完整文件名含扩展名（night-01.webp / P1230888.webp）。
+//   单条目落位（series/posts 模式）作为迁移期兼容保留；新照片默认进池（--pool，且不带目标参数时默认池）。
+//   --migrate 负责把旧条目的 photos/ 与 5 份 sidecar 收进池并回填 frontmatter（四步各自可独立跑）。
+//
 // 不做什么（硬约束）：
-//   - 原图**永不移动、永不删除**：本文件对 raw/ 只读不写，不出现任何 unlink / rm / rename /
-//     rmdir 调用（tests 有一条源码扫描用例守住这点）。
+//   - 原图**永不移动、永不删除**：本文件对 raw/ 只读不写，不出现任何针对 raw/ 的 unlink / rm /
+//     rename / rmdir 调用（tests 有一条源码扫描用例守住这点）。--migrate 的删除面只有
+//     src/content 下的 webp 产物与旧 sidecar，绝不指向 raw/。
 //   - 不执行任何 git 命令：raw/ 与 thumbs/ 已由 .gitignore 排除，提交由人（或主 Agent）决定。
 //   - 图片规格数值只在 astro.config.mjs 一处：下面全部 import 常量，不写死像素/质量。
 //     （唯一例外 SIZE_BUDGET_*：那是 §6 的「验收阈值」而非编码参数，只用于超标时打印告警。）
@@ -64,6 +72,13 @@ export const THUMBS_DIR_NAME = 'thumbs';
 export const PHOTOS_DIR_NAME = 'photos';
 /** sidecar 文件名（content-model 任务 6 锁定）。 */
 export const SIDECAR_FILE_NAME = 'photos.meta.json';
+
+/** 照片池目录名（相对 src/content）：池化后照片的唯一位置（admin-v2.md A1）。 */
+export const POOL_DIR_NAME = 'pool';
+/** 池内照片目录（相对 src/content）：展示版与缩略图同目录，靠 .thumb. 后缀区分。 */
+export const POOL_PHOTOS_REL = `${POOL_DIR_NAME}/${PHOTOS_DIR_NAME}`;
+/** 全局 sidecar（相对 src/content）：唯一元数据源（admin-v2.md A2）。 */
+export const POOL_SIDECAR_REL = `${POOL_DIR_NAME}/${SIDECAR_FILE_NAME}`;
 
 /**
  * §6 性能预算（验收阈值，非编码参数）：展示图 ≤2MB、缩略图 ≤160KB。
@@ -342,16 +357,21 @@ export function serializeSidecar(entries) {
 
 /** 帮助文本（--help 与参数报错时复用）。 */
 export const HELP_TEXT = [
-  '用法：npm run import -- --series <系列标识> | --post <日期-标题> [options]',
+  '用法：npm run import -- [--pool] [--series <系列标识> | --post <日期-标题>] [options]',
+  '      npm run import -- --migrate[=step]   把旧条目照片收进池（四步可单跑）',
   '',
+  '  --pool                导入到照片池 src/content/pool/（不带 --series/--post 时就是默认目标）',
   '  --series, -s <标识>   导入到 src/content/series/<标识>/（不存在则当场新建草稿系列）',
   '  --post,    -p <标识>  导入到 src/content/posts/<标识>/（<标识>.md 不存在则新建草稿骨架）',
   '  --only <a,b.jpg>      本次只导入指定的 raw/ 文件名（逗号分隔，可省扩展名）',
   '  --title <标题>        新建骨架用的标题；省略则由标识派生',
   '  --date <YYYY-MM-DD>   新建骨架用的日期；省略则随笔取标识前缀、系列取今天',
+  '  --ask                 交互式询问导入目标（池为默认，故平时不必问）',
+  '  --migrate[=step]      迁移旧条目照片到池；step ∈ move / merge / backfill / cover，',
+  '                        可逗号组合（如 --migrate=move,merge），省略 step = 全四步',
   '  --help,  -h           显示本帮助',
   '',
-  '两个目标参数都不给时，脚本交互式询问类型与标识。',
+  '目标三选一（池 / 系列 / 随笔），都不给时默认进池。',
   '原图始终留在 raw/ 原地不动；raw/ 与 thumbs/ 已被 .gitignore 排除，不进仓库。',
 ].join('\n');
 
@@ -373,10 +393,18 @@ export function validateIdentifier(identifier) {
 
 /**
  * 解析 CLI 参数（纯函数；argv = process.argv.slice(2)）。
+ *
+ * 三个导入目标互斥：--pool / --series <标识> / --post <标识>；都不给时 collection 与 pool 均为空，
+ * 由 runCli 兜底成「默认进池」（B1），--ask 才回到交互式提问（旧行为，保留给人工排障）。
+ * --migrate 与导入目标互斥（它只搬已入库的产物，不碰 raw/）。
+ *
  * @param {string[]} argv
  * @returns {{
  *   collection: 'series'|'posts'|null,
  *   identifier: string|null,
+ *   pool: boolean,
+ *   migrate: string[]|null,
+ *   ask: boolean,
  *   only: string[],
  *   title: string|null,
  *   date: string|null,
@@ -389,6 +417,10 @@ export function parseArgs(argv) {
   let collection = null;
   /** @type {string|null} */
   let identifier = null;
+  let pool = false;
+  /** @type {string[]|null} */
+  let migrate = null;
+  let ask = false;
   /** @type {string[]} */
   const only = [];
   let title = null;
@@ -397,6 +429,7 @@ export function parseArgs(argv) {
 
   const flag = (name) => (name === '--series' || name === '-s' ? '--series' : '--post');
   const assign = (next, value, name) => {
+    if (pool) throw new Error(`--pool 与 ${flag(name)} 不能同时使用：照片要么进池，要么挂到某个条目下`);
     if (collection !== null && collection !== next) {
       throw new Error('--series 与 --post 不能同时使用，请二选一');
     }
@@ -418,6 +451,26 @@ export function parseArgs(argv) {
       return args[i];
     };
     switch (name) {
+      case '--pool':
+        if (collection !== null) {
+          throw new Error('--pool 与 --series/--post 不能同时使用：照片要么进池，要么挂到某个条目下');
+        }
+        if (inline !== null) throw new Error(`--pool 不带取值\n\n${HELP_TEXT}`);
+        pool = true;
+        break;
+      case '--migrate': {
+        // 三种写法等价：--migrate / --migrate=merge / --migrate merge
+        let spec = inline;
+        if (spec === null && args[i + 1] && MIGRATE_STEPS.includes(String(args[i + 1]).toLowerCase())) {
+          i += 1;
+          spec = args[i];
+        }
+        migrate = parseMigrateSteps(spec === null ? 'all' : spec);
+        break;
+      }
+      case '--ask':
+        ask = true;
+        break;
       case '--series':
       case '-s':
         assign('series', takeNext(), name);
@@ -450,23 +503,57 @@ export function parseArgs(argv) {
     }
   }
 
+  if (migrate && (pool || collection !== null)) {
+    throw new Error('--migrate 不能与 --pool/--series/--post 同用：迁移只整理已入库产物，不导入 raw/');
+  }
+
   // assign() 已保证 collection 与 identifier 同生同灭（缺值当场报错），故此处无需再校验组合。
-  return { collection, identifier, only, title, date, help, interactive: collection === null };
+  return {
+    collection,
+    identifier,
+    pool,
+    migrate,
+    ask,
+    only,
+    title,
+    date,
+    help,
+    interactive: collection === null && !pool && migrate === null,
+  };
 }
 
 /**
  * 落位约定（design §4 + progress.md 2026-09-24 编排拍板：展示图与缩略图同放 photos/，
  * 而非任务 7 字面的 images/+thumbnails/ 双目录）。
+ *   pool   → src/content/pool/photos/{<b>.webp, <b>.thumb.webp} + src/content/pool/photos.meta.json（无 .md）
  *   series → src/content/series/<标识>/{photos/<b>.webp, photos/<b>.thumb.webp, photos.meta.json, index.md}
  *   posts  → src/content/posts/<日期-标题>/{photos/…, photos.meta.json} + 同级 <日期-标题>.md
  * 返回路径全部相对 src/content（绝对路径由调用方拼 root，便于集成测把 root 指到临时目录）。
  *
- * @param {'series'|'posts'} collection
- * @param {string} identifier
+ * 池化的三个关键口径（A 组 A6 + B1）：
+ *   - entryDir = 'pool'，photosDir = 'pool/photos'，因此 sidecar 的 file/thumb 仍是
+ *     `photos/x.webp`（池内相对路径），真实磁盘路径 = src/content/pool/photos/x.webp；
+ *   - markdownPath = null：池是照片仓库，不承载正文，也不写条目骨架；
+ *   - 全局 sidecar 只有一份，多批导入靠 mergeSidecar 追加，不重排。
+ *
+ * @param {'pool'|'series'|'posts'} collection
+ * @param {string} [identifier]
  */
 export function resolveTarget(collection, identifier) {
+  if (collection === POOL_DIR_NAME) {
+    return {
+      collection: 'pool',
+      identifier: POOL_DIR_NAME,
+      /** 资源夹（相对 src/content）= 池根，与 sidecar 的 photos/ 前缀同口径 */
+      entryDir: POOL_DIR_NAME,
+      /** 池没有正文文件 */
+      markdownPath: null,
+      sidecarPath: POOL_SIDECAR_REL,
+      photosDir: POOL_PHOTOS_REL,
+    };
+  }
   if (collection !== 'series' && collection !== 'posts') {
-    throw new Error(`未知的目标类型：${String(collection)}（只支持 series / posts）`);
+    throw new Error(`未知的目标类型：${String(collection)}（只支持 pool / series / posts）`);
   }
   const id = validateIdentifier(identifier);
   const entryDir = `${collection}/${id}`;
@@ -610,7 +697,11 @@ export function buildManifest(p) {
   /** @type {string[]} */
   const lines = [];
 
-  lines.push(`目标条目：${p.target.collection}/${p.target.identifier}（资源夹 src/content/${p.target.entryDir}/）`);
+  if (p.target.collection === POOL_DIR_NAME) {
+    lines.push(`目标：照片池 src/content/${POOL_PHOTOS_REL}/（全局 sidecar src/content/${POOL_SIDECAR_REL}）`);
+  } else {
+    lines.push(`目标条目：${p.target.collection}/${p.target.identifier}（资源夹 src/content/${p.target.entryDir}/）`);
+  }
   if (p.createdEntry) {
     lines.push(`  ↳ 新建草稿骨架：${p.skeletonPath ?? p.target.markdownPath ?? p.target.entryDir}（draft: true，预览确认后再去掉草稿标记）`);
   }
@@ -674,9 +765,10 @@ const ILLUSTRATION_REF_TIP =
 /**
  * 生成可粘贴到后台「正文（以 Markdown 编辑）」的插图引用行（纯函数）。
  *
- * 为什么需要：Sveltia 富文本的图片块只有上传口（政策禁止走上传），正文插图只能在
- * 「以 Markdown 编辑」里手写相对路径；本函数把刚导入的 sidecar 摊成人能照抄的行，
- * 免得非技术用户手拼路径拼错（路径口径见 public/admin/config.yml 两处 body hint）。
+ * 为什么需要：后台正文的插图必须引用池里已入库的照片（池化后没有第二条上传通道），
+ * 手写容易拼错；本函数把刚导入的 sidecar 摊成人能照抄的行。
+ * 池化口径（admin-v2.md D2a）下正文统一写 `![说明](photo:照片ID)`，见同文件
+ * buildPoolIllustrationRefLines；本函数输出的是迁移期兼容的单条目相对路径形。
  *
  * 落位口径与 resolveTarget 一致：
  *   series → 正文在 <标识>/index.md，photos 与之同目录 → `photos/x.webp`
@@ -707,6 +799,557 @@ export function buildIllustrationRefLines({ sidecar, collection, entryId } = {})
   }
   return lines;
 }
+
+// -----------------------------------------------------------------------------
+// 池化迁移（--migrate）：纯函数区（无 fs / 无 console，Vitest 直接喂夹具断言）
+//
+// 四步与 admin-v2.md B2a~B2d 一一对应，且**各自可独立跑**：
+//   move     旧条目 photos/ 下的 webp → pool/photos/（原图 raw/ 不参与，K6）
+//   merge    旧条目的 5 份 sidecar → 全局 pool/photos.meta.json，按文件名去重（先比对四项宽高 + EXIF）
+//   backfill 7 个条目 frontmatter 回填 photos[]；cover 从相对路径换算成照片 ID
+//   cover    K1 坏 cover：无法解析到池内照片的 cover 置空串，并打印待办提醒
+// -----------------------------------------------------------------------------
+
+/** 迁移四步（数组顺序即执行顺序）。 */
+export const MIGRATE_STEPS = Object.freeze(['move', 'merge', 'backfill', 'cover']);
+
+/**
+ * 解析 --migrate 的步骤取值（'all' / '' / 'move,merge' …）→ 规范化的步骤数组。
+ * 顺序恒按 MIGRATE_STEPS 归一，重复项去重；出现未知步骤当场报错（不猜、不静默跑半套）。
+ * @param {string} [spec]
+ * @returns {string[]}
+ */
+export function parseMigrateSteps(spec) {
+  const raw = String(spec ?? '').trim();
+  if (raw === '' || raw.toLowerCase() === 'all') return [...MIGRATE_STEPS];
+  const parts = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const unknown = parts.filter((p) => !MIGRATE_STEPS.includes(p));
+  if (unknown.length > 0) {
+    throw new Error(`未知的迁移步骤：${unknown.join(', ')}（可选 ${MIGRATE_STEPS.join(' / ')}，或 all）`);
+  }
+  const wanted = new Set(parts);
+  return MIGRATE_STEPS.filter((step) => wanted.has(step));
+}
+
+/**
+ * 照片 ID = 路径末段的完整文件名（含扩展名，如 `night-01.webp`）。
+ * 与 contentImages.photoIdOf 同口径，这里不 import 那个模块（脚本不依赖 src/ 的 TS 源码）。
+ * @param {string} relPath
+ */
+export function photoIdFromPath(relPath) {
+  const clean = String(relPath ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .split('?')[0];
+  const parts = clean.split('/').filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : '';
+}
+
+/**
+ * 展示图 ID：缩略图（含 `.thumb.` 复合后缀）返回空串 —— frontmatter 的 photos[] 只存展示版 ID，
+ * 缩略图由前台按约定后缀自己拼，不该混进照片流。
+ * @param {string} relPath
+ */
+export function displayPhotoIdOf(relPath) {
+  const id = photoIdFromPath(relPath);
+  if (id === '' || id.includes('.thumb.')) return '';
+  return id;
+}
+
+/**
+ * 一条 PhotoEntry 的「一致性指纹」：file / thumb / 宽高四项 / exif 全参与。
+ * 去重前必须比对（B2b）：同名但元数据不同的两条记录是**冲突**，不是能随便丢掉一份的重复。
+ * @param {Record<string, any>|null|undefined} entry
+ */
+export function photoSignature(entry) {
+  const rec = entry && typeof entry === 'object' ? entry : {};
+  const exif = rec.exif && typeof rec.exif === 'object' ? rec.exif : {};
+  const exifPairs = Object.keys(exif)
+    .sort()
+    .map((k) => [k, exif[k] === undefined ? null : exif[k]]);
+  return JSON.stringify([
+    String(rec.file ?? ''),
+    String(rec.thumb ?? ''),
+    Number(rec.width ?? 0),
+    Number(rec.height ?? 0),
+    Number(rec.thumbWidth ?? 0),
+    Number(rec.thumbHeight ?? 0),
+    exifPairs,
+  ]);
+}
+
+/** 旧条目 sidecar 的固定位置：<series|posts>/<标识>/photos.meta.json。 */
+const LEGACY_SIDECAR_RE = /^(series|posts)\/([^/]+)\/photos\.meta\.json$/;
+
+/** 旧条目 photos/ 下的产物（只认 webp，含 .thumb.webp 复合后缀）。 */
+const LEGACY_PHOTO_RE = /^(series|posts)\/[^/]+\/photos\/[^/]+\.webp$/i;
+
+/** 旧条目排序：先系列后随笔，各自按标识字典序（保证合并顺序稳定、可复现）。 */
+function legacyEntryOrder(a, b) {
+  if (a.collection !== b.collection) return a.collection === 'series' ? -1 : 1;
+  return String(a.id).localeCompare(String(b.id));
+}
+
+/**
+ * 从「相对 src/content 的文件清单」里认出仍带旧 sidecar 的条目（纯函数：不碰盘）。
+ * @param {string[]} files
+ * @returns {Array<{ collection: 'series'|'posts', id: string, entryDir: string, sidecarPath: string, photosDir: string, markdownPath: string }>}
+ */
+export function discoverLegacyEntries(files) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of files ?? []) {
+    const rel = String(raw).replace(/\\/g, '/').replace(/^\.\//, '');
+    const m = LEGACY_SIDECAR_RE.exec(rel);
+    if (!m) continue;
+    const collection = /** @type {'series'|'posts'} */ (m[1]);
+    const id = m[2];
+    const entryDir = `${collection}/${id}`;
+    if (seen.has(entryDir)) continue;
+    seen.add(entryDir);
+    out.push({
+      collection,
+      id,
+      entryDir,
+      sidecarPath: rel,
+      photosDir: `${entryDir}/${PHOTOS_DIR_NAME}`,
+      markdownPath: collection === 'series' ? `${entryDir}/index.md` : `posts/${id}.md`,
+    });
+  }
+  return out.sort(legacyEntryOrder);
+}
+
+/**
+ * 从文件清单里认出所有内容条目的 Markdown（系列的 <id>/index.md、随笔的 <id>.md）。
+ * 回填要覆盖「有照片的 5 个」+「没照片的 2 个」，所以必须按 .md 走，而不是按 sidecar 走。
+ * @param {string[]} files
+ */
+export function discoverEntryMarkdowns(files) {
+  const out = [];
+  for (const raw of files ?? []) {
+    const rel = String(raw).replace(/\\/g, '/').replace(/^\.\//, '');
+    const series = /^series\/([^/]+)\/index\.md$/.exec(rel);
+    if (series) {
+      out.push({
+        collection: 'series',
+        id: series[1],
+        entryDir: `series/${series[1]}`,
+        markdownPath: rel,
+      });
+      continue;
+    }
+    const post = /^posts\/([^/]+)\.md$/.exec(rel);
+    if (post) {
+      out.push({
+        collection: 'posts',
+        id: post[1],
+        entryDir: `posts/${post[1]}`,
+        markdownPath: rel,
+      });
+    }
+  }
+  return out.sort(legacyEntryOrder);
+}
+
+/**
+ * B2a 的搬运计划（纯函数）：把每个条目 sidecar 登记的 file / thumb 映射到池内同名文件。
+ *
+ * 去重口径（B2b 的前置校验）：
+ *   - 同一目标名来自多条目时，**指纹必须完全一致**才归入 duplicates（可安全丢弃）；
+ *   - 指纹不一致 → 进 conflicts，调用方必须报错中止（绝不静默丢数据）。
+ * photos/ 里存在但 sidecar 没登记的文件进 unregistered：只报告、不搬（来源不明，不能猜）。
+ *
+ * @param {{ sources?: Array<{ entryDir: string, entries: any[] }>, files?: string[] }} [input]
+ */
+export function planPoolMoves({ sources, files } = {}) {
+  /** @type {Array<{ from: string, to: string, basename: string }>} */
+  const moves = [];
+  /** @type {Array<{ from: string, to: string, basename: string, keptFrom: string }>} */
+  const duplicates = [];
+  /** @type {Array<{ basename: string, from: string, keptFrom: string, reason: string }>} */
+  const conflicts = [];
+  /** to -> { from, signature } */
+  const claimed = new Map();
+  /** sidecar 已经认领的旧条目相对路径 */
+  const declared = new Set();
+
+  for (const source of sources ?? []) {
+    const entryDir = String(source?.entryDir ?? '').replace(/\/+$/, '');
+    for (const entry of source?.entries ?? []) {
+      const signature = photoSignature(entry);
+      for (const key of ['file', 'thumb']) {
+        const relPath = typeof entry?.[key] === 'string' ? entry[key].trim() : '';
+        if (relPath === '') continue;
+        const from = `${entryDir}/${relPath.replace(/^\.?\//, '')}`;
+        declared.add(from);
+        const basename = photoIdFromPath(relPath);
+        if (basename === '') continue;
+        const to = `${POOL_PHOTOS_REL}/${basename}`;
+        const prior = claimed.get(to);
+        if (!prior) {
+          claimed.set(to, { from, signature });
+          moves.push({ from, to, basename });
+          continue;
+        }
+        if (prior.signature === signature) {
+          duplicates.push({ from, to, basename, keptFrom: prior.from });
+        } else {
+          conflicts.push({
+            basename,
+            from,
+            keptFrom: prior.from,
+            reason: '同名文件但宽高/EXIF 元数据不一致，去重会丢数据',
+          });
+        }
+      }
+    }
+  }
+
+  /** @type {string[]} */
+  const unregistered = [];
+  for (const raw of files ?? []) {
+    const rel = String(raw).replace(/\\/g, '/').replace(/^\.\//, '');
+    if (!LEGACY_PHOTO_RE.test(rel)) continue;
+    if (declared.has(rel)) continue;
+    unregistered.push(rel);
+  }
+
+  return { moves, duplicates, conflicts, unregistered };
+}
+
+/**
+ * 去重例的展示口径（纯函数）：把 planPoolMoves 的 duplicates（逐文件）归成「每个照片名一例」。
+ * 展示图与缩略图是同一张照片的两个文件，故先把 `.thumb` 复合后缀折回展示图名 ——
+ * 报告里说「去重 6 例」时，指的是 6 个不同的照片（每例带 2~3 个来源目录）。
+ * @param {Array<{ basename: string, from: string, keptFrom: string }>|undefined} duplicates
+ */
+export function groupDuplicateBasenames(duplicates) {
+  /** @type {Map<string, { basename: string, sources: string[] }>} */
+  const groups = new Map();
+  /** 来源统一成条目目录（series/a/photos/x.webp → series/a），展示图与缩略图算同一来源。 */
+  const entryDirOf = (filePath) => String(filePath).replace(/\/photos\/[^/]*$/, '');
+  for (const item of duplicates ?? []) {
+    const key = String(item.basename).replace(/\.thumb(?=\.)/, '');
+    const group = groups.get(key) ?? { basename: key, sources: [] };
+    for (const from of [item.keptFrom, item.from]) {
+      const dir = entryDirOf(from);
+      if (dir !== '' && !group.sources.includes(dir)) group.sources.push(dir);
+    }
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * B2b 的合并（纯函数）：多份旧 sidecar → 一份全局 sidecar 数组。
+ *
+ * 顺序：按传入 sources 顺序（调用方给的是「系列先、随笔后，各自标识字典序」），
+ * 每个条目内部保持原 sidecar 顺序 —— 顶层顺序即照片流/灯箱帧序列，绝不排序。
+ * 去重键 = 展示图文件名（照片 ID）；重复且指纹一致才算一例，指纹冲突进 conflicts。
+ *
+ * @param {Array<{ entryDir: string, entries: any[] }>|undefined} sources
+ */
+export function mergeLegacySidecars(sources) {
+  /** @type {any[]} */
+  const entries = [];
+  /** @type {Map<string, { entry: any, entryDir: string }>} */
+  const byId = new Map();
+  /** @type {Array<{ basename: string, sources: string[] }>} */
+  const deduped = [];
+  /** @type {Array<{ basename: string, from: string[], a: any, b: any }>} */
+  const conflicts = [];
+
+  for (const source of sources ?? []) {
+    const entryDir = String(source?.entryDir ?? '');
+    for (const entry of source?.entries ?? []) {
+      const id = displayPhotoIdOf(entry?.file);
+      if (id === '') continue;
+      const prior = byId.get(id);
+      if (!prior) {
+        byId.set(id, { entry, entryDir });
+        entries.push(entry);
+        continue;
+      }
+      if (photoSignature(prior.entry) === photoSignature(entry)) {
+        const group = deduped.find((g) => g.basename === id);
+        if (group) group.sources.push(entryDir);
+        else deduped.push({ basename: id, sources: [prior.entryDir, entryDir] });
+      } else {
+        conflicts.push({ basename: id, from: [prior.entryDir, entryDir], a: prior.entry, b: entry });
+      }
+    }
+  }
+
+  return { entries, deduped, conflicts };
+}
+
+// ---- frontmatter 就地回填（保留行尾风格与其它字段原样）------------------------
+
+/**
+ * 把 Markdown 切成「frontmatter 行块 + 其余行」，并记录原文件的换行风格。
+ * 现有内容 md 是 CRLF，个别是 LF —— 回填必须保持各自原样，不能把整个仓库的行尾洗一遍。
+ * @param {string} markdown
+ * @returns {{ eol: string, lines: string[], head: string[], fields: string[], tail: string[] }|null}
+ */
+export function splitFrontmatter(markdown) {
+  const text = String(markdown ?? '');
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  if (lines[0] !== '---') return null;
+  const end = lines.indexOf('---', 1);
+  if (end < 0) return null;
+  return {
+    eol,
+    lines,
+    head: lines.slice(0, 1),
+    fields: lines.slice(1, end),
+    tail: lines.slice(end),
+  };
+}
+
+/** 去掉 YAML 标量的成对引号（只处理我们写出的两种形）。 */
+function unquoteYaml(value) {
+  const s = String(value ?? '').trim();
+  const single = /^'(.*)'$/.exec(s);
+  if (single) return single[1];
+  const double = /^"(.*)"$/.exec(s);
+  if (double) return double[1];
+  return s;
+}
+
+/** 读 frontmatter 里某个键的标量值；没有该键返回 null。 */
+export function frontmatterValueOf(markdown, key) {
+  const fm = splitFrontmatter(markdown);
+  if (!fm) return null;
+  const re = new RegExp(`^${key}\\s*:\\s*(.*)$`);
+  for (const line of fm.fields) {
+    const m = re.exec(line);
+    if (m) return unquoteYaml(m[1]);
+  }
+  return null;
+}
+
+/**
+ * 读 frontmatter 的 photos 列表（块序列与行内 `[a, b]` 两种写法都认）。
+ * 没有该键返回 null（调用方据此区分「键不存在」与「空列表」）。
+ */
+export function frontmatterPhotosOf(markdown) {
+  const fm = splitFrontmatter(markdown);
+  if (!fm) return null;
+  const index = fm.fields.findIndex((line) => /^photos\s*:/.test(line));
+  if (index < 0) return null;
+  /** @type {string[]} */
+  const items = [];
+  const head = fm.fields[index].replace(/^photos\s*:\s*/, '').trim();
+  if (head !== '') {
+    const inline = head.replace(/^\[/, '').replace(/\]$/, '').trim();
+    if (inline !== '') {
+      items.push(...inline.split(',').map((s) => unquoteYaml(s)).filter(Boolean));
+    }
+  }
+  for (let i = index + 1; i < fm.fields.length && /^[ \t]/.test(fm.fields[i]); i += 1) {
+    const m = /^\s*-\s*(.+)$/.exec(fm.fields[i]);
+    if (m) items.push(unquoteYaml(m[1]));
+  }
+  return items;
+}
+
+/**
+ * 就地替换/追加一个 frontmatter 键：老键连同它的缩进续行一起替换，反复跑结果不变（幂等）。
+ * @param {string[]} fields frontmatter 内的行（不含两条 ---）
+ * @param {string} key
+ * @param {string[]} valueLines 该键要写入的行（可多行）
+ */
+function upsertFrontmatterField(fields, key, valueLines) {
+  /** @type {string[]} */
+  const out = [];
+  const re = new RegExp(`^${key}\\s*:`);
+  let replaced = false;
+  for (let i = 0; i < fields.length; i += 1) {
+    const line = fields[i];
+    if (!re.test(line)) {
+      out.push(line);
+      continue;
+    }
+    out.push(...valueLines);
+    replaced = true;
+    let j = i + 1;
+    while (j < fields.length && /^[ \t]/.test(fields[j])) j += 1;
+    i = j - 1;
+  }
+  if (!replaced) out.push(...valueLines);
+  return out;
+}
+
+/**
+ * B2c 的落盘文本：把 photos / cover 写回 frontmatter，其余字节原样不动。
+ * photos 用块序列（75 张的照片流用行内数组不可读），空列表写 `photos: []`；
+ * cover 空串写 `cover: ''`（A5：schema 允许空串，前台退回 photos[0]）。
+ *
+ * @param {string} markdown
+ * @param {{ photos?: string[], cover?: string }} [patch]
+ * @returns {{ text: string, changed: boolean, ok: boolean, eol: string }}
+ */
+export function applyFrontmatterBackfill(markdown, patch = {}) {
+  const fm = splitFrontmatter(markdown);
+  if (!fm) return { text: String(markdown ?? ''), changed: false, ok: false, eol: '\n' };
+  const ids = (patch.photos ?? []).map((id) => String(id).trim()).filter(Boolean);
+  const cover = String(patch.cover ?? '').trim();
+
+  let fields = upsertFrontmatterField(fm.fields, 'cover', [
+    cover === '' ? "cover: ''" : `cover: ${yamlScalar(cover)}`,
+  ]);
+  fields = upsertFrontmatterField(
+    fields,
+    'photos',
+    ids.length === 0 ? ['photos: []'] : ['photos:', ...ids.map((id) => `  - ${yamlScalar(id)}`)],
+  );
+
+  const text = [...fm.head, ...fields, ...fm.tail].join(fm.eol);
+  return { text, changed: text !== String(markdown ?? ''), ok: true, eol: fm.eol };
+}
+
+/**
+ * B2c + B2d 的取数（纯函数）：条目自己的 photos 列表与 cover，全部按池口径算好再交给回填。
+ *
+ * photos：原 sidecar 顺序的展示图 ID（sidebar 没有就沿用 frontmatter 现有的，仍没有则 []）。
+ * cover ：原相对路径（photos/x.webp）→ 照片 ID（x.webp），并且**必须在池里真实存在**；
+ *         解析不出（如两个条目的 photos/tbd.webp 占位串）→ 空串，由前台按 A5 退回 photos[0]。
+ *
+ * @param {{ markdown?: string, sidecarEntries?: any[], poolIds?: Set<string>|string[] }} [input]
+ */
+export function planBackfill({ markdown, sidecarEntries, poolIds } = {}) {
+  const markdownText = String(markdown ?? '');
+  const entries = Array.isArray(sidecarEntries) ? sidecarEntries : [];
+  const pool = poolIds instanceof Set ? poolIds : new Set(poolIds ?? []);
+
+  /** @type {string[]} */
+  const photos = [];
+  for (const entry of entries) {
+    const id = displayPhotoIdOf(entry?.file);
+    if (id !== '' && !photos.includes(id)) photos.push(id);
+  }
+  const existingPhotos = frontmatterPhotosOf(markdownText);
+  const effectivePhotos = entries.length > 0 ? photos : (existingPhotos ?? []);
+
+  const previousCover = frontmatterValueOf(markdownText, 'cover');
+  const coverId = previousCover === null ? '' : photoIdFromPath(previousCover);
+  const coverResolved = coverId !== '' && pool.has(coverId);
+
+  return {
+    photos: effectivePhotos,
+    cover: coverResolved ? coverId : '',
+    previousCover,
+    coverId,
+    coverResolved,
+    hadSidecar: entries.length > 0,
+    hasPhotosKey: existingPhotos !== null,
+  };
+}
+
+/** 池口的正文插图引用行（D2a 语法）：`![说明](photo:照片ID)`。 */
+export function buildPoolIllustrationRefLines(entries) {
+  /** @type {string[]} */
+  const lines = [];
+  for (const entry of entries ?? []) {
+    const id = displayPhotoIdOf(entry?.file);
+    if (id === '') continue;
+    lines.push(`![${ILLUSTRATION_ALT}](photo:${id})`);
+  }
+  return lines;
+}
+
+/**
+ * B3 的迁移报告（纯函数）：清单（搬了几张 / 跳了几张 / 去重几例）+ 各条目 photos 列表 +
+ * 可复制的插图引用行 + 坏 cover 待办。CLI 与集成测共用同一份文本，避免口径漂移。
+ *
+ * @param {{
+ *   steps?: string[],
+ *   moved?: Array<{ from: string, to: string }>,
+ *   skipped?: string[],
+ *   dedupedGroups?: Array<{ basename: string, sources: string[] }>,
+ *   dedupedFiles?: number,
+ *   removedSidecars?: string[],
+ *   mergedCount?: number,
+ *   unregistered?: string[],
+ *   entries?: Array<{ label: string, photos: string[], cover: string, coverResolved?: boolean, changed?: boolean }>,
+ *   todos?: string[],
+ * }} p
+ */
+export function buildMigrationReport(p) {
+  const moved = p.moved ?? [];
+  const skipped = p.skipped ?? [];
+  const dedupedGroups = p.dedupedGroups ?? [];
+  const entries = p.entries ?? [];
+  const todos = p.todos ?? [];
+  /** @type {string[]} */
+  const lines = [];
+
+  lines.push(`迁移步骤：${(p.steps ?? MIGRATE_STEPS).join(' → ')}`);
+  lines.push(
+    `文件搬运：移动 ${moved.length} 个 webp、跳过 ${skipped.length} 个（目标已存在且内容一致）。`,
+  );
+  if (dedupedGroups.length > 0) {
+    const detail = dedupedGroups.map((g) => `${g.basename}（${g.sources.length} 份）`).join('、');
+    lines.push(
+      `按文件名去重 ${dedupedGroups.length} 例、共少 ${p.dedupedFiles ?? 0} 个文件（四条宽高 + EXIF 逐项一致才丢）：${detail}`,
+    );
+  } else {
+    lines.push('按文件名去重：0 例（没有同名照片被多条目引用）。');
+  }
+  if (p.mergedCount !== undefined) {
+    lines.push(`全局 sidecar：${p.mergedCount} 条 PhotoEntry（src/content/${POOL_SIDECAR_REL}）。`);
+  }
+  if ((p.removedSidecars ?? []).length > 0) {
+    lines.push(`已删除旧条目 sidecar ${p.removedSidecars.length} 份：${(p.removedSidecars ?? []).join('、')}`);
+  }
+  if ((p.unregistered ?? []).length > 0) {
+    lines.push(
+      `⚠️ 有 ${(p.unregistered ?? []).length} 个产物没被任何 sidecar 登记，按「来源不明不猜」留在原地：${(p.unregistered ?? []).join('、')}`,
+    );
+  }
+
+  if (entries.length > 0) {
+    lines.push('各条目的 photos 列表（顺序 = 前台照片流顺序）：');
+    for (const entry of entries) {
+      const list = entry.photos.length === 0 ? '（空）' : `[${entry.photos.join(', ')}]`;
+      const cover =
+        entry.cover === ''
+          ? entry.photos.length > 0
+            ? '（空串 → 前台退回 photos[0]）'
+            : '（空串，且 photos 也为空 → 封面区整块不渲染）'
+          : entry.cover;
+      lines.push(`  · ${entry.label}：${entry.photos.length} 张 ${list}｜cover = ${cover}`);
+    }
+  }
+
+  const refLines = buildPoolIllustrationRefLines(
+    entries.flatMap((entry) => entry.photos.map((id) => ({ file: `photos/${id}` }))),
+  );
+  if (refLines.length > 0) {
+    lines.push(ILLUSTRATION_REF_HEADER.replace('后台「正文」的', '正文的'));
+    for (const line of refLines) lines.push(line);
+    lines.push(ILLUSTRATION_REF_TIP);
+  }
+
+  if (todos.length > 0) {
+    lines.push('待办（人工决策，脚本不替你做）：');
+    for (const todo of todos) lines.push(`  · ${todo}`);
+  }
+
+  return {
+    lines,
+    movedCount: moved.length,
+    skippedCount: skipped.length,
+    dedupedCount: dedupedGroups.length,
+    dedupedFiles: p.dedupedFiles ?? 0,
+    entryCount: entries.length,
+  };
+}
+
 
 // -----------------------------------------------------------------------------
 // I/O 区：sharp / exifr / fs 只出现在这里
@@ -893,8 +1536,11 @@ async function nextSeriesOrder(contentRoot, selfIdentifier) {
  * 编排一次导入：CLI 与集成测试共用的程序化入口。
  * root 可指向临时目录（不落 mock，纯参数注入），方便真实 sharp/exifr 跑完整管线。
  *
+ * collection 省略即进池（B1）：池没有正文，因此不写草稿骨架、也不产出「条文相对」的插图引用行，
+ * 而是给 D2a 语法 `![说明](photo:照片ID)`。
+ *
  * @param {{
- *   collection?: 'series'|'posts',
+ *   collection?: 'pool'|'series'|'posts',
  *   identifier?: string,
  *   root?: string,
  *   rawDir?: string,
@@ -909,14 +1555,14 @@ export async function runImport(opts = {}) {
   const log = opts.log ?? ((line) => console.log(line));
   const root = path.resolve(opts.root ?? repoRootFromMetaUrl());
   const target = resolveTarget(
-    /** @type {'series'|'posts'} */ (opts.collection),
+    /** @type {'pool'|'series'|'posts'} */ (opts.collection ?? POOL_DIR_NAME),
     opts.identifier ?? '',
   );
   const contentRoot = path.join(root, 'src', 'content');
   const entryAbs = path.join(contentRoot, target.entryDir);
   const photosAbs = path.join(entryAbs, PHOTOS_DIR_NAME);
   const sidecarAbs = path.join(contentRoot, target.sidecarPath);
-  const markdownAbs = path.join(contentRoot, target.markdownPath);
+  const markdownAbs = target.markdownPath ? path.join(contentRoot, target.markdownPath) : null;
   const rawDir = path.resolve(opts.rawDir ?? path.join(root, 'raw'));
   const thumbsAbs = path.resolve(opts.thumbsDir ?? path.join(root, THUMBS_DIR_NAME));
 
@@ -969,9 +1615,10 @@ export async function runImport(opts = {}) {
   }
 
   // 条目 Markdown 不存在才写草稿骨架；已存在的 .md 一个字都不碰（文字归人和后台）。
+  // 池模式没有正文（markdownAbs === null），整块跳过。
   let createdEntry = false;
   let skeletonPath = null;
-  if (!existsSync(markdownAbs)) {
+  if (markdownAbs && !existsSync(markdownAbs)) {
     const coverRel = results[0]?.entry?.file ?? existingSidecar[0]?.file ?? null;
     if (coverRel === null) {
       throw new Error(
@@ -1022,12 +1669,16 @@ export async function runImport(opts = {}) {
 
   // 本次确实新增了照片时，附一段「可粘贴到后台正文（Markdown 模式）」的插图引用行，
   // 非技术用户照抄即可（口径与逻辑见纯函数区 buildIllustrationRefLines 的注释）。
+  // 池模式用 D2a 语法 `![说明](photo:照片ID)`：照片只有一份，正文不必再拼条目相对路径。
   if (results.length > 0) {
-    const refLines = buildIllustrationRefLines({
-      sidecar: results.map((r) => r.entry),
-      collection: target.collection,
-      entryId: target.identifier,
-    });
+    const refLines =
+      target.collection === POOL_DIR_NAME
+        ? buildPoolIllustrationRefLines(results.map((r) => r.entry))
+        : buildIllustrationRefLines({
+            sidecar: results.map((r) => r.entry),
+            collection: target.collection,
+            entryId: target.identifier,
+          });
     if (refLines.length > 0) {
       log(ILLUSTRATION_REF_HEADER);
       for (const line of refLines) log(line);
@@ -1047,15 +1698,334 @@ export async function runImport(opts = {}) {
 }
 
 // -----------------------------------------------------------------------------
+// 迁移 I/O（--migrate）：只有这一节会删/移 src/content 下的产物，且绝不指向 raw/
+// -----------------------------------------------------------------------------
+
+/**
+ * 递归列出目录下所有文件（相对给定根的 POSIX 路径，排序保证每次跑的顺序一致）。
+ * 目录不存在返回空数组（全新的临时仓库也能跑）。
+ * @param {string} absDir
+ */
+async function walkRelFiles(absDir) {
+  /** @type {string[]} */
+  const out = [];
+  /** @param {string} abs @param {string} prefix */
+  const walk = async (abs, prefix) => {
+    /** @type {import('node:fs').Dirent[]} */
+    let dirents;
+    try {
+      dirents = await fsp.readdir(abs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const dirent of dirents.sort((a, b) => a.name.localeCompare(b.name))) {
+      const rel = prefix ? `${prefix}/${dirent.name}` : dirent.name;
+      if (dirent.isDirectory()) await walk(path.join(abs, dirent.name), rel);
+      else out.push(rel);
+    }
+  };
+  await walk(absDir, '');
+  return out;
+}
+
+/**
+ * 迁移用的严格 sidecar 读取：解析失败或出现非 PhotoEntry 行就停下。
+ * 导入期的 readSidecar 会「按空重写」自愈；迁移期这么做等于静默删数据，故必须失败。
+ * @param {string} absPath
+ */
+async function readSidecarForMigration(absPath) {
+  const text = await fsp.readFile(absPath, 'utf8');
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`sidecar 不是合法 JSON，迁移中止（人工修好后再跑）：${absPath} — ${String(/** @type {Error} */ (err).message)}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`sidecar 顶层不是数组，迁移中止：${absPath}`);
+  }
+  parsed.forEach((item, index) => {
+    if (!isPhotoEntry(item)) {
+      throw new Error(`sidecar 第 ${index + 1} 条不是合法 PhotoEntry，迁移中止（缺 file/thumb）：${absPath}`);
+    }
+  });
+  return parsed;
+}
+
+/** 把一个文件搬到目标位置（同盘 rename；跨盘/权限受限时 copy + 删源）。 */
+async function moveArtifact(fromAbs, toAbs) {
+  await fsp.mkdir(path.dirname(toAbs), { recursive: true });
+  try {
+    await fsp.rename(fromAbs, toAbs);
+  } catch (err) {
+    const code = /** @type {NodeJS.ErrnoException} */ (err).code;
+    if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'EACCES') throw err;
+    await fsp.copyFile(fromAbs, toAbs);
+    await fsp.unlink(fromAbs);
+  }
+}
+
+/** 两个文件是否逐字节一致（去重/覆盖前的最后一道证据，比文件名可信）。 */
+async function sameBytes(aAbs, bAbs) {
+  const [a, b] = await Promise.all([fsp.readFile(aAbs), fsp.readFile(bAbs)]);
+  return a.equals(b);
+}
+
+/** 读全局 sidecar 里的展示图 ID 集合（迁移的「池里真有什么」判据）。 */
+async function readPoolIds(poolSidecarAbs) {
+  const entries = await readSidecar(poolSidecarAbs);
+  /** @type {Set<string>} */
+  const ids = new Set();
+  for (const entry of entries) {
+    const id = displayPhotoIdOf(entry?.file);
+    if (id !== '') ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * 执行池化迁移（--migrate）。四步各自可独立跑，也可一次跑全套：
+ *   move → merge → backfill → cover（顺序固定，与 B2a~B2d 一致）
+ *
+ * 原图完全不参与：本函数只在 src/content 下移动/删除 webp 产物与旧 sidecar，
+ * raw/ 既不读入清单、也不出现在任何路径拼接里（K6）。
+ *
+ * @param {{ root?: string, steps?: string[], log?: (line: string) => void }} [opts]
+ */
+export async function runMigration(opts = {}) {
+  const log = opts.log ?? ((line) => console.log(line));
+  const root = path.resolve(opts.root ?? repoRootFromMetaUrl());
+  const steps =
+    Array.isArray(opts.steps) && opts.steps.length > 0
+      ? parseMigrateSteps(opts.steps.join(','))
+      : [...MIGRATE_STEPS];
+  const contentRoot = path.join(root, 'src', 'content');
+  const poolPhotosAbs = path.join(contentRoot, POOL_PHOTOS_REL);
+  const poolSidecarAbs = path.join(contentRoot, POOL_SIDECAR_REL);
+
+  const files = await walkRelFiles(contentRoot);
+  const legacyEntries = discoverLegacyEntries(files);
+  const markdowns = discoverEntryMarkdowns(files);
+  /** @type {Array<{ entryDir: string, collection: string, id: string, entries: any[] }>} */
+  const sources = [];
+  for (const entry of legacyEntries) {
+    sources.push({
+      entryDir: entry.entryDir,
+      collection: entry.collection,
+      id: entry.id,
+      entries: await readSidecarForMigration(path.join(contentRoot, entry.sidecarPath)),
+    });
+  }
+
+  const plan = planPoolMoves({ sources, files });
+  if (plan.conflicts.length > 0) {
+    const detail = plan.conflicts.map((c) => `${c.basename}（${c.keptFrom} vs ${c.from}：${c.reason}）`).join('；');
+    throw new Error(`迁移中止：同名照片的 sidecar 记录不一致，去重会丢数据 —— ${detail}`);
+  }
+
+  /** @type {Array<{ from: string, to: string, basename?: string }>} */
+  const moved = [];
+  /** @type {string[]} */
+  const skippedMoves = [];
+  /** @type {string[]} 因同名同内容而删掉的重复副本 */
+  const droppedDuplicates = [];
+  /** @type {string[]} */
+  const removedSidecars = [];
+  let mergedCount;
+
+  // ── B2a 文件搬运：侧车登记的 file / thumb → pool/photos/ 同名文件
+  if (steps.includes('move')) {
+    for (const item of plan.moves) {
+      const fromAbs = path.join(contentRoot, item.from);
+      const toAbs = path.join(contentRoot, item.to);
+      if (!existsSync(fromAbs)) {
+        if (existsSync(toAbs)) {
+          skippedMoves.push(item.from);
+          continue;
+        }
+        throw new Error(`迁移中止：sidecar 登记的 ${item.from} 在磁盘上不存在（先修好 sidecar 或补回文件）`);
+      }
+      if (existsSync(toAbs)) {
+        if (!(await sameBytes(fromAbs, toAbs))) {
+          throw new Error(`迁移中止：池里已有同名但内容不同的文件 ${item.to}（来源 ${item.from}），不覆盖`);
+        }
+        await fsp.unlink(fromAbs);
+        droppedDuplicates.push(item.from);
+        continue;
+      }
+      await moveArtifact(fromAbs, toAbs);
+      moved.push({ from: item.from, to: item.to });
+    }
+    for (const dup of plan.duplicates) {
+      const fromAbs = path.join(contentRoot, dup.from);
+      const toAbs = path.join(contentRoot, dup.to);
+      if (!existsSync(fromAbs)) {
+        skippedMoves.push(dup.from);
+        continue;
+      }
+      if (!existsSync(toAbs)) {
+        throw new Error(`迁移中止：去重目标 ${dup.to} 不存在（先跑 move 再跑去重）`);
+      }
+      if (!(await sameBytes(fromAbs, toAbs))) {
+        throw new Error(`迁移中止：同名文件内容不同 ${dup.from} vs ${dup.keptFrom}，不删任何一份`);
+      }
+      await fsp.unlink(fromAbs);
+      droppedDuplicates.push(dup.from);
+    }
+  }
+
+  // ── B2b sidecar 合并：多份旧 sidecar → 一份全局，按文件名去重（指纹一致才丢）
+  // 注意：旧 sidecar 不在这里删。各条目的 photos 列表要靠它才能按原顺序回填（B2c），
+  // 删除动作放到 backfill 末尾（且只在全局 sidecar 已覆盖它时）——这样四步分开跑也不丢归属。
+  if (steps.includes('merge')) {
+    const merged = mergeLegacySidecars(sources);
+    if (merged.conflicts.length > 0) {
+      const detail = merged.conflicts.map((c) => `${c.basename}（${c.from.join(' vs ')}）`).join('；');
+      throw new Error(`迁移中止：同名照片的元数据不一致 —— ${detail}`);
+    }
+    const existingPool = await readSidecar(poolSidecarAbs);
+    const finalEntries = mergeSidecar(existingPool, merged.entries);
+    await fsp.mkdir(path.dirname(poolSidecarAbs), { recursive: true });
+    await fsp.writeFile(poolSidecarAbs, serializeSidecar(finalEntries), 'utf8');
+    mergedCount = finalEntries.length;
+  }
+
+  // 全局 sidecar 自己覆盖了哪些照片（判断旧 sidecar 能否安全删除，不掺本次 sources）
+  const globalPoolIds = await readPoolIds(poolSidecarAbs);
+
+  // 「池里真有什么」= 全局 sidecar ∪ 本次旧 sidecar ∪ 搬过来的目标文件
+  // （后两项让 --migrate=backfill / cover 单独跑也不会把合法 cover 误判成坏 cover）
+  const poolIds = await readPoolIds(poolSidecarAbs);
+  for (const source of sources) {
+    for (const entry of source.entries) {
+      const id = displayPhotoIdOf(entry?.file);
+      if (id !== '') poolIds.add(id);
+    }
+  }
+  for (const item of plan.moves) {
+    const id = displayPhotoIdOf(item.to);
+    if (id !== '') poolIds.add(id);
+  }
+
+  /** @type {Array<{ label: string, photos: string[], cover: string, changed: boolean }>} */
+  const entryReports = [];
+  /** @type {string[]} */
+  const todos = [];
+
+  /** 写回一个条目的 photos/cover，返回它最终落在盘上的状态。 */
+  const backfillOne = async (md) => {
+    const abs = path.join(contentRoot, md.markdownPath);
+    const before = await fsp.readFile(abs, 'utf8');
+    const source = sources.find((s) => s.entryDir === md.entryDir);
+    const planned = planBackfill({
+      markdown: before,
+      sidecarEntries: source?.entries ?? [],
+      poolIds,
+    });
+    const applied = applyFrontmatterBackfill(before, {
+      photos: planned.photos,
+      cover: planned.cover,
+    });
+    if (applied.changed) await fsp.writeFile(abs, applied.text, 'utf8');
+    return {
+      label: `${md.collection}/${md.id}`,
+      photos: planned.photos,
+      cover: planned.cover,
+      previousCover: planned.previousCover ?? null,
+      coverResolved: planned.coverResolved,
+      changed: applied.changed,
+      eol: applied.eol,
+    };
+  };
+
+  // ── B2c frontmatter 回填：photos 按原 sidecar 顺序；cover 从相对路径换算成照片 ID
+  if (steps.includes('backfill')) {
+    for (const md of markdowns) entryReports.push(await backfillOne(md));
+    // 回填完成后，旧 sidecar 才允许删除：必须已被全局 sidecar 完整覆盖，
+    // 否则留着（否则后续再跑 backfill 就无从知道这些照片原本属于哪个条目）。
+    for (const entry of legacyEntries) {
+      const ids = sources
+        .filter((source) => source.entryDir === entry.entryDir)
+        .flatMap((source) => source.entries.map((item) => displayPhotoIdOf(item?.file)))
+        .filter(Boolean);
+      const covered = ids.every((id) => globalPoolIds.has(id));
+      if (!covered) continue;
+      const abs = path.join(contentRoot, entry.sidecarPath);
+      if (!existsSync(abs)) continue;
+      await fsp.unlink(abs);
+      removedSidecars.push(entry.sidecarPath);
+    }
+  }
+
+  // ── B2d 坏 cover（K1 + A5）：解析不到池内照片的 cover 置空串，并留下待办
+  if (steps.includes('cover')) {
+    for (const md of markdowns) {
+      const result = await backfillOne(md);
+      if (!steps.includes('backfill')) entryReports.push(result);
+      const abs = path.join(contentRoot, md.markdownPath);
+      const text = await fsp.readFile(abs, 'utf8');
+      const photos = frontmatterPhotosOf(text) ?? [];
+      const cover = frontmatterValueOf(text, 'cover') ?? '';
+      if (cover === '' && photos.length === 0) {
+        todos.push(
+          `${md.collection}/${md.id}：cover 已置空串且 photos 为空 —— 前台封面区整块不渲染；要出图请在后台从池里挑一张顶上（K1/A5）。`,
+        );
+      } else if (cover === '') {
+        todos.push(
+          `${md.collection}/${md.id}：cover 已置空串 —— 前台退回 photos[0]（${photos[0]}）；想指定别的封面就填对应照片 ID。`,
+        );
+      }
+    }
+  }
+
+  const report = buildMigrationReport({
+    steps,
+    moved,
+    skipped: skippedMoves,
+    dedupedGroups: groupDuplicateBasenames(plan.duplicates),
+    dedupedFiles: droppedDuplicates.length,
+    removedSidecars,
+    mergedCount,
+    unregistered: plan.unregistered,
+    entries: entryReports,
+    todos,
+  });
+
+  log(`开始迁移：src/content（原图 raw/ 不参与，永不移动、永不删除）`);
+  for (const line of report.lines) log(line);
+  if (steps.length < MIGRATE_STEPS.length) {
+    log(
+      `注意：本次只跑了 ${steps.join(' / ')}（共 ${MIGRATE_STEPS.length} 步），中途状态可能过不了 check-images；` +
+        '跑满 `npm run import -- --migrate` 才算迁移完成。',
+    );
+  }
+
+  return {
+    steps,
+    moved,
+    skipped: skippedMoves,
+    dedupedFiles: droppedDuplicates,
+    dedupedGroups: groupDuplicateBasenames(plan.duplicates),
+    removedSidecars,
+    mergedCount,
+    unregistered: plan.unregistered,
+    entries: entryReports,
+    todos,
+    report,
+    paths: { contentRoot, poolPhotosAbs, poolSidecarAbs },
+  };
+}
+
+// -----------------------------------------------------------------------------
 // CLI：runCli 是可注入的决策核心，main() 只是薄壳（入口 = npm run import）
 // -----------------------------------------------------------------------------
 
 /** 非交互终端（stdin 不是 TTY）时的提示语：CI / 重定向 / 双击运行下不至于挂住。 */
 export const NON_INTERACTIVE_HINT =
-  '当前不是可交互的终端，无法问你目标：请直接把参数写全，例如 npm run import -- --series daily-frames 或 npm run import -- --post 2026-09-24-evening-stroll';
+  '当前不是可交互的终端，无法问你目标：不带参数时默认进池，要指定条目请把参数写全，例如 npm run import -- --pool 或 npm run import -- --series daily-frames 或 npm run import -- --post 2026-09-24-evening-stroll';
 
 /** 交互第一问的文案（测试与 README 以此为準）。 */
-export const PROMPT_KIND = '导入到哪里？输入 1 = 系列(series)，2 = 随笔(posts)［默认 1］：';
+export const PROMPT_KIND = '导入到哪里？输入 1 = 系列(series)，2 = 随笔(posts)［默认 1，进池请直接用 --pool］：';
 /** 第二问：系列标识。 */
 export const PROMPT_SERIES_ID = '系列标识（英文小写-连字符，如 daily-frames；不存在则当场新建草稿系列）：';
 /** 第二问：随笔标识。 */
@@ -1107,9 +2077,10 @@ export async function promptTarget(streams = {}) {
 }
 
 /**
- * CLI 决策核心：解析参数 → （必要时）问目标 → 调导入 → 定退出码。
- * log / logError / stdinIsTty / runImport / ask 都可注入，
- * 于是「help、参数错、非交互、坏图退 1」这些分支能被真断言，而不必真的往 src/content 写盘。
+ * CLI 决策核心：解析参数 → （迁移分支 / 问目标）→ 调导入 → 定退出码。
+ * log / logError / stdinIsTty / runImport / runMigration / ask 都可注入，
+ * 于是「help、参数错、非交互、坏图退 1、迁移步骤」这些分支能被真断言，
+ * 而不必真的往 src/content 写盘。
  *
  * @param {string[]} argv
  * @param {{
@@ -1117,6 +2088,7 @@ export async function promptTarget(streams = {}) {
  *   logError?: (line: string) => void,
  *   stdinIsTty?: boolean,
  *   runImport?: typeof runImport,
+ *   runMigration?: typeof runMigration,
  *   ask?: () => Promise<{ collection: 'series'|'posts', identifier: string }>,
  *   input?: NodeJS.ReadableStream,
  *   output?: NodeJS.WritableStream,
@@ -1127,6 +2099,7 @@ export async function runCli(argv, io = {}) {
   const log = io.log ?? ((line) => console.log(line));
   const logError = io.logError ?? ((line) => console.error(line));
   const doImport = io.runImport ?? runImport;
+  const doMigrate = io.runMigration ?? runMigration;
   const isTty = io.stdinIsTty ?? Boolean(process.stdin.isTTY);
 
   let parsed;
@@ -1141,10 +2114,24 @@ export async function runCli(argv, io = {}) {
     return 0;
   }
 
-  /** @type {'series'|'posts'|null} */
-  let collection = parsed.collection;
-  let identifier = parsed.identifier;
-  if (!collection || !identifier) {
+  // --migrate：只整理已入库产物（不碰 raw/），与导入目标互斥（parseArgs 已拦住组合）。
+  if (parsed.migrate) {
+    try {
+      await doMigrate({ steps: parsed.migrate, log });
+      return 0;
+    } catch (err) {
+      logError(`迁移失败：${String(/** @type {Error} */ (err).message)}`);
+      return 1;
+    }
+  }
+
+  /** @type {'pool'|'series'|'posts'} */
+  let collection = parsed.pool ? POOL_DIR_NAME : /** @type {any} */ (parsed.collection);
+  /** @type {string} */
+  let identifier = parsed.identifier ?? '';
+
+  // --ask 才走交互（池是默认目标，平时不必问）；非交互终端下 --ask 要报错而不是挂住。
+  if (parsed.ask && !parsed.collection) {
     if (!isTty && !io.ask) {
       logError(NON_INTERACTIVE_HINT);
       return 1;
@@ -1159,15 +2146,13 @@ export async function runCli(argv, io = {}) {
     }
   }
 
-  /** @type {'series'|'posts'} */
-  const targetCollection = /** @type {'series'|'posts'} */ (collection);
-  /** @type {string} */
-  const targetIdentifier = /** @type {string} */ (identifier);
+  // 不带任何目标参数 → 默认进池（B1）。池没有标识，传空串即可（resolveTarget 会补齐）。
+  if (!collection) collection = /** @type {'pool'} */ (POOL_DIR_NAME);
 
   try {
     const { manifest } = await doImport({
-      collection: targetCollection,
-      identifier: targetIdentifier,
+      collection,
+      identifier,
       only: parsed.only,
       title: parsed.title,
       date: parsed.date,
