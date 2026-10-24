@@ -42,23 +42,20 @@ async function readIsland(page: import('@playwright/test').Page, gallery: string
 }
 
 test.describe('系列列表 /series/ · 目次点线行', () => {
-  test('渲染已发布系列，draft daily-frames 不出现', async ({ page }) => {
+  test('渲染已发布系列，草稿不出现（daily-frames 已于 2026-10-05 发布）', async ({ page }) => {
     await page.goto('/series/');
     await expect(page.locator('ol.toc')).toHaveCount(1);
 
     // 已发布（city-lights）在列，链到详情
     await expect(page.locator('a.toc-row[href="/series/city-lights/"]')).toHaveCount(1);
-    // 行序 = 后台拖拽维护的 order 升序（order 相同再按日期正序）：留白 1 → 夜光 3 → 街头随拍 4。
+    // daily-frames 已由后台从草稿发布，现在应当出现在目次里
+    await expect(page.locator('a.toc-row[href="/series/daily-frames/"]')).toHaveCount(1);
+    // 行序 = 后台拖拽维护的 order 升序（order 相同再按日期正序）：留白 1 → 日常帧 2 → 夜光 3 → 街头随拍 4。
     // 题名只认前缀：后台验收时标题会被临时改动，不该让断言跟着红。
     const names = await page.locator('.toc .name').allInnerTexts();
     expect(names[0]).toContain('留白');
-    expect(names.findIndex((n) => n.startsWith('夜光'))).toBeGreaterThan(0);
-
-    // 草稿：路径与题名都不该出现
-    await expect(page.locator('a[href="/series/daily-frames/"]')).toHaveCount(0);
-    const html = await page.content();
-    expect(html).not.toContain('daily-frames');
-    expect(html).not.toContain('日常帧');
+    expect(names.findIndex((n) => n.startsWith('日常帧'))).toBe(1);
+    expect(names.findIndex((n) => n.startsWith('夜光'))).toBeGreaterThan(1);
   });
 
   test('卡片张数 == sidecar 帧数', async ({ page }) => {
@@ -177,8 +174,14 @@ test.describe('手记为空 / draft 404', () => {
     await expect(page.locator('h1.chapter-title')).toHaveCount(1);
   });
 
-  test('draft 系列 daily-frames 路由不生成 → 404', async ({ page }) => {
+  test('已发布系列 daily-frames 路由生成（2026-10-05 起不再是草稿）', async ({ page }) => {
     const resp = await page.goto('/series/daily-frames/');
+    expect(resp?.status()).toBe(200);
+    await expect(page.locator('h1.chapter-title')).toHaveCount(1);
+  });
+
+  test('草稿随笔「雾起的那个早上」不生成路由 → 404（草稿隔离仍在）', async ({ page }) => {
+    const resp = await page.goto('/posts/2026-08-10-foggy-morning/');
     expect(resp?.status()).toBe(404);
   });
 });

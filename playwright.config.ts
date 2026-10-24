@@ -18,10 +18,13 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // 先构建再 preview，保证 E2E 打的是上线同源的静态产物
+    // 先构建再 preview，保证 E2E 打的是上线同源的静态产物。
+    // reuseExistingServer 必须恒为 false：本地曾因复用一个残留的旧 preview 进程，
+    // 让「daily-frames 仍是草稿」这类已过时的断言在旧构建上「通过」，掩盖了真实行为。
+    // 代价是每次多一次构建（约 2s），换来的是「测到的就是刚构建的」。
     command: `npm run build && npm run preview -- --port ${PORT} --host 127.0.0.1`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 300_000,
     stdout: 'ignore',
     stderr: 'pipe',

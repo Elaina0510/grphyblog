@@ -23,11 +23,10 @@ test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
     }
 
     const html = await page.content();
-    // 草稿：daily-frames 系列 + 「雾起的那个早上」随笔，任何形式都不该出现
-    expect(html).not.toContain('daily-frames');
-    expect(html).not.toContain('日常帧');
+    // 草稿隔离（硬约束 6）：「雾起的那个早上」仍是 draft: true，任何形式都不该出现。
+    // 注：daily-frames 已在 2026-10-05 由后台从草稿发布（draft: false），不再是草稿样本。
     expect(html).not.toContain('雾起的那个早上');
-    // 非草稿：city-lights 系列与晨雾随笔应出现
+    // 已发布：city-lights、daily-frames 系列与晨雾随笔应出现
     expect(html).toContain('city-lights');
     expect(html).toContain('夜光');
     expect(html).toContain('晨雾里的第一束光');
