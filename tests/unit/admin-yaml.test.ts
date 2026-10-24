@@ -249,9 +249,9 @@ describe('真实条目回归：解析结果与 js-yaml 一致，且能无损还�
     // date 在 js-yaml 里是 Date，我们保留字符串给表单用 —— 断言指向同一天
     expect(data.date).toBe((oracle.date as Date).toISOString().slice(0, 10));
 
-    const keys = ['title', 'date', 'cover', 'tags', 'order', 'draft', 'photos'].filter(
-      (key) => data[key] !== undefined && data[key] !== null,
-    );
+    // 拼装时沿用**原文的键序**（后台/作者可以按需调整字段顺序，那不是错误），
+    // 这样 ② 的键序断言才是在验「拼装不重排字段」，而不是在验「内容恰好长这样」。
+    const keys = Object.keys(data);
     const rebuilt = serializeFrontmatter(data, keys);
     // ① 语义无损：重新拼出来的 YAML 被 js-yaml 读出同一份数据
     expect(semantic(load(rebuilt)), `${file} 重新拼装后语义变了`).toEqual(semantic(oracle));

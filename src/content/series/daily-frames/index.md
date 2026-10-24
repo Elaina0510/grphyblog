@@ -1,10 +1,11 @@
 ---
+order: 2
 title: 日常帧 · Daily Frames
 date: 2026-08-10
 cover: P1230857.webp
-tags: []
-order: 2
-draft: true
+tags:
+  - 扫街
+draft: false
 photos:
   - P1230857.webp
   - P1230861.webp
