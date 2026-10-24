@@ -160,6 +160,23 @@ export function newEntryPath(collection, { slug, date }) {
 }
 
 /**
+ * 删一个条目：只删它的 .md（系列是 <id>/index.md，随笔是 <id>.md）。
+ *
+ * 照片**不删**——池是共享的，同一张图可能被多个条目引用，删条目删图会把别人的照片
+ * 一起弄丢。要清理无人引用的图是另一件事（需要先扫全站 photos[]），不在这里做。
+ *
+ * sha 必须当场读一次：目录列表里的 sha 可能已经过期，DELETE 会因此被 GitHub 拒。
+ */
+export async function deleteEntry(client, { path, collection, title }) {
+  const file = await client.readFile(path);
+  const result = await client.deleteFile(path, {
+    message: commitMessage(collection, { title }, { deleted: true }),
+    sha: file.sha,
+  });
+  return { path, commit: result.commit };
+}
+
+/**
  * 浏览器直传一张照片（E6）：两个文件 + 一条 sidecar 登记。
  *
  * @param {object} client GitHub 客户端

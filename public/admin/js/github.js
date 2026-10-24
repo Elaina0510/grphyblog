@@ -220,6 +220,18 @@ export function createGitHubClient({
     };
   }
 
+  /**
+   * 删一个文件。GitHub Contents API 的 DELETE 必须带当前 sha（防误删别人刚改的版本），
+   * 所以调用方要先 readFile 拿 sha —— 与 PUT 覆盖同一套乐观锁语义。
+   */
+  async function remove(path, { message, sha } = {}) {
+    const json = await request(buildContentsUrl({ owner, repo, path, apiBase }), {
+      method: 'DELETE',
+      body: JSON.stringify({ message, sha, branch }),
+    });
+    return { path, commit: String(json?.commit?.sha ?? '') };
+  }
+
   return {
     owner,
     repo,
@@ -229,6 +241,7 @@ export function createGitHubClient({
     listDir,
     writeFile: (path, text, options) => put(path, textToBase64(text), options),
     writeBytes: (path, bytes, options) => put(path, bytesToBase64(bytes), options),
+    deleteFile: remove,
   };
 }
 

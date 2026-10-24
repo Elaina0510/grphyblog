@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, test, type Page } from '@playwright/test';
 
 import { installGitHubMock, seedToken, SERIES_MD, POST_MD, type MockHandle } from './helpers/admin-mock';
@@ -18,6 +21,18 @@ import { installGitHubMock, seedToken, SERIES_MD, POST_MD, type MockHandle } fro
 
 let mock: MockHandle;
 
+/**
+ * 从真实内容文件取标题。
+ * 标题是用户在后台随手会改的东西（「夜光 · 城市666」→「…nhnhnhn」已经改过两次），
+ * 断言写死具体字样会让测试因为「内容变了」而红，那是假警报，不是回归。
+ */
+function titleOf(rel: string): string {
+  const text = readFileSync(resolve(process.cwd(), rel), 'utf8');
+  const m = /^title:\s*(.+?)\s*$/m.exec(text.replace(/\r?\n/g, '\n'));
+  if (!m) throw new Error(`${rel} 里没有 title`);
+  return m[1].replace(/^['"]|['"]$/g, '');
+}
+
 test.beforeEach(async ({ page }) => {
   mock = await installGitHubMock(page);
   await seedToken(page);
@@ -31,6 +46,13 @@ async function openSeries(page: Page): Promise<void> {
   await page.click('[data-testid="entry-edit"]');
   await expect(page.locator('[data-testid="edit-view"]')).toBeVisible();
   await expect(page.locator('[data-testid="body"]')).toBeVisible();
+}
+
+/** 照片网格默认收起（B5 反馈），点「＋ 选择照片」才展开。 */
+async function openPicker(page: Page): Promise<void> {
+  const toggle = page.locator('[data-testid="picker-toggle"]');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(page.locator('[data-testid="photo-picker"]')).toBeVisible();
 }
 
 /** 从保存的 md 文本里取 photos 列表（只取 .webp 项，避开 tags 的块序列）。 */
@@ -58,16 +80,21 @@ test.describe('E4 编辑页', () => {
   test('打开已有系列：字段与照片按 frontmatter 回填', async ({ page }) => {
     await openSeries(page);
 
-    await expect(page.locator('[data-field="title"]')).toHaveValue('夜光 · 城市666');
+    await expect(page.locator('[data-field="title"]')).toHaveValue(
+      titleOf('src/content/series/city-lights/index.md'),
+    );
     await expect(page.locator('[data-field="date"]')).toHaveValue('2026-09-20');
     await expect(page.locator('[data-field="tags"]')).toHaveValue('城市, 夜景, 风光');
     await expect(page.locator('[data-field="order"]')).toHaveValue('3');
-    await expect(page.locator('[data-testid="cover"]')).toHaveValue('night-02.webp');
+    await expect(page.locator('[data-testid="cover-option"].selected')).toHaveAttribute(
+      'data-photo-id',
+      'night-02.webp',
+    );
     await expect(page.locator('[data-testid="draft"]')).not.toBeChecked();
-    // 已存在的条目不能改标识（改标识 = 换目录，必须走新建）
-    await expect(page.locator('[data-testid="slug"]')).toHaveValue('city-lights');
-    await expect(page.locator('[data-testid="slug"]')).toBeDisabled();
+    // 已存在的条目**不再渲染**标识行（改标识 = 换目录，后台不支持；留个禁用框只会占地方）
+    await expect(page.locator('[data-testid="slug"]')).toHaveCount(0);
     // 勾选网格把池里 78 张全列出来，已选的 2 张按顺序排在顺序条上
+    await openPicker(page);
     await expect(page.locator('[data-testid="pick-tile"]')).toHaveCount(78);
     await expect(page.locator('[data-testid="order-item"]')).toHaveCount(2);
     await expect(page.locator('[data-testid="order-item"]').first()).toHaveAttribute(
@@ -79,6 +106,7 @@ test.describe('E4 编辑页', () => {
 
   test('勾选 / 取消：photos 数组追加与移除都实时生效', async ({ page }) => {
     await openSeries(page);
+    await openPicker(page);
 
     await page.click('[data-testid="pick-tile"][data-photo-id="P1100451.webp"]');
     await expect(page.locator('[data-testid="order-item"]')).toHaveCount(3);
@@ -101,13 +129,17 @@ test.describe('E4 编辑页', () => {
 
     // 封面的可选项只来自已勾选照片：把封面选成某张、再取消勾选那张 → 自动回到「不指定」
     await page.click('[data-testid="pick-tile"][data-photo-id="night-01.webp"]');
-    await page.selectOption('[data-testid="cover"]', 'night-01.webp');
+    await page.click('[data-testid="cover-option"][data-photo-id="night-01.webp"]');
     await page.click('[data-testid="pick-tile"][data-photo-id="night-01.webp"]');
-    await expect(page.locator('[data-testid="cover"]')).toHaveValue('');
+    await expect(page.locator('[data-testid="cover-option"].selected')).toHaveAttribute(
+      'data-photo-id',
+      '',
+    );
   });
 
   test('拖拽排序：顺序条重排后 photos 数组同步（这就是前台照片流顺序）', async ({ page }) => {
     await openSeries(page);
+    await openPicker(page);
     // 先凑够 4 张，拖拽的位移才看得清
     await page.click('[data-testid="pick-tile"][data-photo-id="P1100451.webp"]');
     await page.click('[data-testid="pick-tile"][data-photo-id="P1230857.webp"]');
@@ -142,6 +174,7 @@ test.describe('E4 编辑页', () => {
 
   test('保存：一次 PUT，frontmatter 的 photos 顺序 = 拖拽顺序，行尾保留 CRLF', async ({ page }) => {
     await openSeries(page);
+    await openPicker(page);
 
     await page.click('[data-testid="pick-tile"][data-photo-id="P1100451.webp"]');
     const items = page.locator('[data-testid="order-item"]');
@@ -215,8 +248,9 @@ test.describe('E4 编辑页', () => {
     await page.fill('[data-testid="slug"]', 'e2e-new-series');
     await page.fill('[data-field="tags"]', '测试, 后台');
     await page.fill('[data-field="order"]', '9');
+    await openPicker(page);
     await page.click('[data-testid="pick-tile"][data-photo-id="night-01.webp"]');
-    await page.selectOption('[data-testid="cover"]', 'night-01.webp');
+    await page.click('[data-testid="cover-option"][data-photo-id="night-01.webp"]');
     await page.fill('[data-testid="body"]', '新系列的开场白。');
     await page.click('[data-testid="save"]');
 

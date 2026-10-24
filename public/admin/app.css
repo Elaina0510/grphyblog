@@ -239,6 +239,81 @@ select:focus {
   color: var(--ink);
 }
 
+/* 删除：常态低调（不抢保存的注意力），二次确认时用朱砂亮起来 */
+.btn.danger {
+  color: var(--cinnabar);
+  border-color: var(--rule);
+}
+
+.btn.danger:hover,
+.btn.danger.armed {
+  color: var(--cinnabar);
+  border-color: var(--cinnabar);
+  background: var(--paper-deep);
+}
+
+/* 封面选择：缩略图按钮条（替代原来只有文字的下拉） */
+.cover-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-2);
+}
+
+.cover-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  width: 78px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+
+.cover-option:hover {
+  border-color: var(--ink-soft);
+}
+
+.cover-option.selected {
+  border-color: var(--cinnabar);
+  box-shadow: inset 0 0 0 1px var(--cinnabar);
+}
+
+.cover-thumb {
+  width: 68px;
+  height: 46px;
+  object-fit: cover;
+  display: block;
+  background: var(--paper-deep);
+}
+
+.cover-none {
+  width: 68px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  background: var(--paper-deep);
+}
+
+.cover-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 照片网格默认 hidden（picker.hidden = true），展开后按原 grid 排 */
+[data-testid='photo-picker'][hidden] {
+  display: none;
+}
+
 /* ── 工具条 ───────────────────────────────────────────────────────────── */
 .bar {
   display: flex;

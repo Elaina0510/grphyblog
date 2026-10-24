@@ -87,8 +87,15 @@ export interface MockOptions {
   breakImages?: boolean;
 }
 
+export interface DeleteRecord {
+  path: string;
+  body: Record<string, unknown>;
+}
+
 export interface MockHandle {
   puts: PutRecord[];
+  /** 记录 DELETE（删条目），供用例断言「删的是哪一篇、带没带 sha」。 */
+  deletes: DeleteRecord[];
   /** 清空已记录的 PUT（用例分段断言时用）。 */
   reset(): void;
 }
@@ -103,6 +110,7 @@ export async function installGitHubMock(page: Page, options: MockOptions = {}): 
   const files = { ...defaultFiles(sidecar), ...(options.files ?? {}) };
   const dirs = { ...DEFAULT_DIRS, ...(options.dirs ?? {}) };
   const puts: PutRecord[] = [];
+  const deletes: DeleteRecord[] = [];
 
   await page.route('https://api.github.com/**', async (route: Route) => {
     const request = route.request();
@@ -128,6 +136,26 @@ export async function installGitHubMock(page: Page, options: MockOptions = {}): 
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ content: { path, sha: `sha-after-${puts.length}` }, commit: { sha: 'commit-0123456789' } }),
+      });
+      return;
+    }
+
+    if (request.method() === 'DELETE') {
+      const body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+      deletes.push({ path, body });
+      // 真 GitHub 的 DELETE 不带 sha 会 422；这里同样拒绝，好让测试能抓住「忘了带 sha」
+      if (!body.sha) {
+        await route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Invalid request: "sha" wasn\'t supplied.' }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ commit: { sha: 'commit-deleted-0123456789' } }),
       });
       return;
     }
@@ -179,8 +207,10 @@ export async function installGitHubMock(page: Page, options: MockOptions = {}): 
 
   return {
     puts,
+    deletes,
     reset: () => {
       puts.length = 0;
+      deletes.length = 0;
     },
   };
 }

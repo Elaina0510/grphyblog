@@ -201,8 +201,9 @@ export function isValidSlug(slug) {
 }
 
 /** 提交信息（每条 PUT 就是一条 commit，写清楚改了什么）。 */
-export function commitMessage(collection, fields, { created = false } = {}) {
+export function commitMessage(collection, fields, { created = false, deleted = false } = {}) {
   const kind = collection === 'series' ? '系列' : '随笔';
   const title = String(fields?.title ?? '').trim() || '（无题）';
-  return `content(${collection}): ${created ? '新建' : '更新'}${kind}「${title}」`;
+  const verb = deleted ? '删除' : created ? '新建' : '更新';
+  return `content(${collection}): ${verb}${kind}「${title}」`;
 }

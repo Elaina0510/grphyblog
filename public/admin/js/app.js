@@ -52,6 +52,8 @@ const state = {
   entries: { series: null, posts: null },
   editing: null,
   message: '',
+  /** 列表页状态条的口气：成功 ok / 失败 error，别把报错染成绿色。 */
+  messageTone: 'ok',
 };
 
 /** 拖拽源下标（HTML5 dnd 在 dragstart 里记，drop 里用）。 */
@@ -132,7 +134,8 @@ function thumbPathOf(entry) {
 }
 
 /** 一张缩略图（加载失败退成占位块，不让网格出现一堆破图标）。 */
-function thumbNode(entry, { className = 'shot' } = {}) {
+function thumbNode(entry, options = {}) {
+  const { className = 'shot' } = typeof options === 'string' ? { className: options } : options;
   const id = entryPhotoId(entry);
   const img = el('img', {
     class: className,
@@ -394,6 +397,18 @@ function renderList(collection) {
   const entries = state.entries[collection];
   const body = el('div', { 'data-testid': 'entry-list' });
 
+  // 列表页也要有状态条：删除、加载失败、新建成功这些提示都发生在这个视图，
+  // 没有它的话操作完只剩「什么都没发生」——和 2026-10-24 那个保存反馈是同一个坑。
+  if (state.message) {
+    view.append(
+      el('p', { class: `status ${state.messageTone}`, 'data-testid': 'status' }, [
+        state.message,
+      ]),
+    );
+    state.message = '';
+    state.messageTone = 'ok';
+  }
+
   if (entries === null) {
     body.append(el('p', { class: 'empty' }, ['读取中…']));
     view.append(el('h2', {}, [label]), body);
@@ -454,6 +469,7 @@ async function ensureEntries(collection) {
     state.entries[collection] = await api.listEntries(state.client, collection);
   } catch (error) {
     state.entries[collection] = [];
+    state.messageTone = 'error';
     state.message = describeError(error);
   }
   if (state.view === collection) renderList(collection);
@@ -505,6 +521,7 @@ async function openEntry(collection, path) {
     state.view = 'edit';
     render();
   } catch (error) {
+    state.messageTone = 'error';
     state.message = describeError(error);
     state.view = collection;
     render();
@@ -548,9 +565,26 @@ function renderEdit() {
   const draft = el('input', { type: 'checkbox', 'data-testid': 'draft' });
   draft.checked = Boolean(editing.fields.draft);
 
-  const cover = el('select', { 'data-testid': 'cover' });
+  const cover = el('div', { class: 'cover-picker', 'data-testid': 'cover' });
 
   const picker = el('div', { class: 'grid', 'data-testid': 'photo-picker' });
+  // 78 张全展开会把表单撑成好几屏，默认收起，点「＋ 选择照片」才展开。
+  picker.hidden = true;
+  const pickerToggle = el(
+    'button',
+    {
+      class: 'btn plain small',
+      type: 'button',
+      'data-testid': 'picker-toggle',
+      'aria-expanded': 'false',
+      onclick: () => {
+        picker.hidden = !picker.hidden;
+        pickerToggle.setAttribute('aria-expanded', String(!picker.hidden));
+        pickerToggle.textContent = picker.hidden ? '＋ 选择照片' : '收起照片网格';
+      },
+    },
+    ['＋ 选择照片'],
+  );
   const order = el('div', { class: 'order', 'data-testid': 'photo-order' });
   const editorHost = el('div', { class: 'editor', 'data-testid': 'editor' });
   const status = el('p', { class: 'status', 'data-testid': 'status' }, ['']);
@@ -558,10 +592,20 @@ function renderEdit() {
   const fieldsBox = el('div', {}, [
     field('标题', title),
     field('日期', date),
-    field(isSeries ? '系列标识（目录名，保存后不改）' : '随笔标识（文件名里日期之后那段）', slug, editing.isNew ? '只用小写字母、数字与连字符。' : '已存在的条目不能改标识。'),
+    // 标识只在新建时有用（决定目录名 / 文件名）；已存在的条目改标识等于换目录，
+    // 后台不支持，所以整行不渲染，而不是渲染一个禁用输入框占地方。
+    ...(editing.isNew
+      ? [
+          field(
+            isSeries ? '系列标识（目录名，保存后不改）' : '随笔标识（文件名里日期之后那段）',
+            slug,
+            '只用小写字母、数字与连字符。',
+          ),
+        ]
+      : []),
     field('标签', tags),
     ...(orderInput ? [field('排序权重（越小越靠前）', orderInput)] : []),
-    field('封面', cover, '只能从已勾选的照片里选；留空 = 前台用第一张。'),
+    field('封面', cover, '从已勾选的照片里挑；留空 = 前台用第一张。'),
     el('div', { class: 'field inline' }, [draft, el('label', { 'data-testid': 'draft-label' }, ['草稿（不进公开页面）'])]),
   ]);
 
@@ -570,6 +614,41 @@ function renderEdit() {
     { class: 'btn', type: 'button', 'data-testid': 'save', onclick: () => saveEditing(status) },
     [editing.isNew ? '新建并保存' : '保存'],
   );
+  // 删除是破坏性动作，用内联二次确认：第一次点变「确认删除」并在顶栏给出说明，
+  // 5 秒内再点才真删。不用原生 confirm —— 它的样式不可控，且在某些环境会被静默拦掉。
+  let deleteArmed = false;
+  let deleteTimer = null;
+  const deleteButton = editing.isNew
+    ? null
+    : el(
+        'button',
+        {
+          class: 'btn plain small danger',
+          type: 'button',
+          'data-testid': 'delete',
+          onclick: () => {
+            if (!deleteArmed) {
+              deleteArmed = true;
+              deleteButton.textContent = '确认删除';
+              deleteButton.classList.add('armed');
+              setStatus(
+                status,
+                `再点一次「确认删除」就会删掉这个${label}；照片仍留在池里，不受影响。`,
+                'error',
+              );
+              deleteTimer = setTimeout(() => {
+                deleteArmed = false;
+                deleteButton.textContent = '删除';
+                deleteButton.classList.remove('armed');
+              }, 5000);
+              return;
+            }
+            clearTimeout(deleteTimer);
+            deleteEditing(status);
+          },
+        },
+        ['删除'],
+      );
   const backButton = el(
     'button',
     {
@@ -590,6 +669,7 @@ function renderEdit() {
       el('span', { class: 'mono hint', 'data-testid': 'entry-path' }, [editing.path || '（保存时按标识生成路径）']),
       el('span', { class: 'spacer' }),
       backButton,
+      deleteButton,
       saveButton,
       // 保存反馈必须贴着按钮：表单有字段 + 78 张照片网格 + 正文编辑器，
       // 若把状态放在表单末尾，点顶部的按钮时提示在几屏之外，等于没有反馈。
@@ -601,6 +681,7 @@ function renderEdit() {
       el('h3', {}, ['照片（勾选顺序 = 前台照片流顺序，可拖拽调整）']),
       order,
       el('p', { class: 'hint' }, ['在下面的缩略图网格里点选；勾中的按顺序排在上面，拖动小图可改顺序（键盘：选中后 Alt + ←/→）。']),
+      pickerToggle,
       picker,
       el('h3', {}, ['正文']),
       editorHost,
@@ -617,9 +698,7 @@ function renderEdit() {
   editing.dom = { title, date, tags, orderInput, draft, slug, cover, picker, order, editorHost, status };
   buildPicker(picker);
   refreshPhotoUI();
-  cover.addEventListener('change', () => {
-    editing.fields.cover = cover.value;
-  });
+  // 封面是缩略图按钮组（不是 select），选中即写回 fields，无需 change 监听。
 
   editing.editor = null;
   mountEditor(editorHost, { value: editing.body }).then((adapter) => {
@@ -644,7 +723,8 @@ function readFields(editing, dom) {
     .filter(Boolean);
   if (dom.orderInput) editing.fields.order = Number(dom.orderInput.value);
   editing.fields.draft = dom.draft.checked;
-  editing.slug = dom.slug.value.trim();
+  // 已存在的条目不渲染标识行（改标识 = 换目录，不支持），此时保留原值不动。
+  if (dom.slug) editing.slug = dom.slug.value.trim();
 }
 
 /** 勾选网格：池里每张一张小图 + 一个复选框；点小图或复选框都算勾/取消。 */
@@ -771,12 +851,36 @@ function refreshPhotoUI() {
 
   const previous = editing.fields.cover;
   clear(dom.cover);
-  dom.cover.append(el('option', { value: '' }, ['不指定（前台用第一张）']));
+  // 「不指定」+ 每张已勾选照片的小缩略图：封面要一眼看出是哪张，纯文字下拉做不到。
+  const makeOption = (id, index) => {
+    const selected = (previous || '') === id;
+    const entry = id ? state.pool.find((row) => entryPhotoId(row) === id) : null;
+    const node = el(
+      'button',
+      {
+        type: 'button',
+        class: `cover-option${selected ? ' selected' : ''}`,
+        'data-testid': 'cover-option',
+        'data-photo-id': id,
+        'aria-pressed': String(selected),
+        title: id || '不指定（前台用第一张）',
+        onclick: () => {
+          editing.fields.cover = id;
+          refreshPhotoUI();
+        },
+      },
+      [
+        id && entry ? thumbNode(entry, 'cover-thumb') : el('span', { class: 'cover-none' }, ['—']),
+        el('span', { class: 'cover-label' }, [id ? `${index + 1}. ${id}` : '不指定']),
+      ],
+    );
+    return node;
+  };
+  dom.cover.append(makeOption('', -1));
   photos.forEach((id, index) => {
-    dom.cover.append(el('option', { value: id }, [`${index + 1}. ${id}`]));
+    dom.cover.append(makeOption(id, index));
   });
-  dom.cover.value = photos.includes(previous) ? previous : '';
-  editing.fields.cover = dom.cover.value;
+  if (!photos.includes(previous)) editing.fields.cover = '';
 }
 
 function setStatus(statusEl, text, kind = '') {
@@ -853,6 +957,52 @@ async function saveEditing(statusEl) {
     setStatus(statusEl, describeError(error), 'error');
   } finally {
     setBusy(false);
+  }
+}
+
+/**
+ * 删一个条目（只删 .md，照片留在池里）。
+ * 只由顶栏「确认删除」第二步调用 —— 第一步的二次确认在按钮自己的 onclick 里。
+ */
+async function deleteEditing(statusEl) {
+  const editing = state.editing;
+  if (!editing || !state.client || editing.isNew) return;
+  const deleteBtn = /** @type {HTMLButtonElement|null} */ (
+    document.querySelector('[data-testid="delete"]')
+  );
+  const saveBtn = /** @type {HTMLButtonElement|null} */ (
+    document.querySelector('[data-testid="save"]')
+  );
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = '删除中…';
+  }
+  if (saveBtn) saveBtn.disabled = true;
+  setStatus(statusEl, '删除中…');
+  try {
+    const result = await api.deleteEntry(state.client, {
+      path: editing.path,
+      collection: editing.collection,
+      title: editing.fields.title,
+    });
+    // 直接从缓存里摘掉这一项，不要置 null —— 置 null 会让 renderList 去重新拉列表，
+    // 拉完再 render 一次就把刚写好的「已删除」提示冲掉了（用户又看到「什么都没发生」）。
+    const cached = state.entries[editing.collection];
+    state.entries[editing.collection] = Array.isArray(cached)
+      ? cached.filter((row) => row.path !== editing.path)
+      : null;
+    state.editing = null;
+    state.view = editing.collection;
+    state.messageTone = 'ok';
+    state.message = `已删除：${result.path}（commit ${String(result.commit).slice(0, 7)}）；照片仍在池里。`;
+    render();
+  } catch (error) {
+    setStatus(statusEl, describeError(error), 'error');
+    if (deleteBtn) {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = '删除';
+    }
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 

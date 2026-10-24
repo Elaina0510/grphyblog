@@ -103,6 +103,8 @@ test.describe('闭环：后台保存 → 前台能渲染', () => {
     const candidate = [...poolIds].find((id) => !currentPhotos.includes(id));
     expect(candidate, '池里应该有一张该系列还没引用的图').toBeTruthy();
 
+    // 照片网格默认收起（2026-10-24 的 UI 调整），先展开
+    await page.click('[data-testid="picker-toggle"]');
     await page.click(`[data-testid="pick-tile"][data-photo-id="${candidate}"]`);
     await expect(
       page.locator(`[data-testid="pick-box"][data-photo-id="${candidate}"]`),
