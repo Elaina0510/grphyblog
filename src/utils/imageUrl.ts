@@ -12,12 +12,12 @@
 //   - 或 Astro image()/glob ?url 得到的 "/_astro/xxx.webp"；
 //   - 或已经是绝对的 http(s) 链接（原样返回）。
 //
-// ⚠️ 同步约定（decap-cms 任务 8，现引擎为 Sveltia）：/admin 后台（public/admin/）用的是 CDN
-//    上的 Sveltia 脚本，运行时**import 不到本文件**，预览 URL 的 base 规则在
-//      - public/admin/config.yml 的 `public_folder`
-//    处有一份对应口径（Decap 时代 index.html 里那份 resolvePreviewUrl 镜像已随引擎退役）。
-//    **改这里的基准规则（含 PUBLIC_IMAGE_BASE 口径）必须同步改 public_folder**，
-//    否则后台 Editor Preview 的图与线上图会走散（验收时人工比对一次预览图与线上图）。
+// ⚠️ 同步约定（v0.1.1 起后台是自建单页，纯静态放 public/admin/）：后台与前台读同一份内容仓库、
+//    同一套图片基准，但后台**不 import 本文件**——它的预览拼串自己实现一份同规则
+//    （同源根 '/' + 可选 PUBLIC_IMAGE_BASE）。
+//      - 改这里的基准规则（含 PUBLIC_IMAGE_BASE 口径）**必须同步改 public/admin/ 的预览拼串**，
+//        否则后台预览的图与线上图会走散（验收时人工比对一次预览图与线上图）。
+//      - 反过来：组件与后台页面里不许再出现手写的图片绝对/相对前缀，一律走本函数的口径。
 // =============================================================================
 
 /** 绝对 URL：以 http:// 或 https:// 开头（大小写不敏感）。 */

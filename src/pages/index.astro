@@ -4,14 +4,14 @@
  *
  * 结构（对照 doc/preview/home.html + DESIGN §5）：
  *   ① 开场跨页  —— 1/3 文字 · 2/3 图版（.spread / .spread-quiet 家具类）
- *   ② 精选区    —— 读 site.json.featured.photos（手动挑图，改 JSON 即生效、不碰代码）
+ *   ② 精选区    —— 读 site.json.featured.photos（照片 ID + 人工文案，改 JSON 即生效、不碰代码）
  *   ③ 最新系列  —— getPublishedSeries()（排 draft）按 order/日期取前 N，卡片=封面+标题+日期+张数
  *   ④ 最新随笔  —— getPublishedPosts() 时间倒序取前 N，卡片=标题+日期+摘要/封面
  *
  * 硬约束（勿偏离）：
  *   - 复用 Base.astro（书脊 + 导航 + 页脚 + 入场编排），页面不重写骨架；
  *   - 图片一律 PhotoPlate：显式 width/height（sidecar 真值）+ loading="lazy"（首屏 LCP 例外 eager+high）；
- *   - 图片 URL 只经 contentImageUrl / entryResourceDir（边界③）；宽高只从 sidecar 取，绝不写死；
+ *   - 图片 URL 只经 contentImageUrl / entryResourceDir（边界③）；宽高只从照片池 sidecar 取，绝不写死；
  *   - 导航/品牌串只从 site.json 取（SiteMark / Base 已处理），页面不硬编码；
  *   - sample/placeholder 字段（intro / indexNote）渲染必带朱砂 ※示例（诚实口径）；
  *   - v1 无分页 / 无标签页 / 无搜索；朱砂仅盖章级 ≤5%；
@@ -20,7 +20,7 @@
  * 灯箱接线（lightbox 模块 任务 9「三处入口一致」）：
  *   开场图 + 精选入口图按 §2 契约各挂 data-lightbox / data-lightbox-gallery="home" / data-lightbox-index，
  *   并在精选区输出同 gid 的 frames JSON 岛；<Lightbox /> 外壳随页面挂载。
- *   帧数据仍然**只出自 sidecar**（resolvePhoto 已经带 entry.width/height/exif/thumb），首页不新增任何手写来源。
+ *   帧数据仍然**只出自照片池 sidecar**（resolvePhoto 已经带 entry.width/height/exif/thumb），首页不新增任何手写来源。
  *   开场图与精选首图是同一张（opening 取 featured[0]）→ 按 src 去重共享一帧与同一索引，
  *   因此图版数（3）可比帧数（2）多，但索引集合恒等于 0..帧数-1。
  * ==========================================================================*/
@@ -31,57 +31,39 @@ import SiteMark from '../components/SiteMark.astro';
 import Lightbox from '../components/Lightbox.astro';
 import site from '../data/site.json';
 import { getPublishedPosts, getPublishedSeries } from '../utils/collections';
-import { contentImageUrl, contentImageMap, entryResourceDir } from '../utils/contentImages';
+import { POOL_DIR, contentImageUrl, entryResourceDir, photoIdOf } from '../utils/contentImages';
+import { findPoolPhoto, poolSidecar, resolveCoverPhotoId } from '../utils/photoPool';
 import { resolveSeriesCount } from '../utils/photoCount';
 import { buildFramesIslandJson, createFrameRegistry } from '../utils/lightbox';
-import type { Exif, PhotoEntry, PhotoSidecar } from '../types/photoSidecar';
+import type { Exif, PhotoEntry } from '../types/photoSidecar';
 
 /** 取前 N 的窗口（视觉稿 3–4 条的节奏；数据不足时按实际条数渲染）。 */
 const LATEST_SERIES_N = 4;
 const LATEST_POSTS_N = 3;
 
-/* ---- 资源解析：内容夹 photos.meta.json 建成「目录 -> 数组」映射；兜底文件走 contentImageMap ---- */
-const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, PhotoSidecar>;
-
-/** 资源目录（相对 src/content，如 `series/city-lights`）→ 该条目的 sidecar 数组。 */
-const sidecarByDir: Record<string, PhotoSidecar> = {};
-for (const [key, mod] of Object.entries(sidecarModules)) {
-  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
-  sidecarByDir[dir] = mod;
-}
-
-/** 某条目 photos/ 下的图片路径列表（含缩略图；兜底计数内部会排除 .thumb.webp）。 */
-function photosUnder(dir: string): string[] {
-  const prefix = `${dir}/photos/`;
-  return Object.keys(contentImageMap).filter((k) => k.startsWith(prefix));
-}
-
-/** 构建期缺 sidecar 的告警出口（注入给纯函数 resolveSeriesCount）。 */
-function warnMissingSidecar(message: string): void {
-  console.warn(message);
-}
+/* ---- 照片池化（admin-v2.md D3/D4/G2）：照片元数据只有一份全局 sidecar，
+ *      封面/精选一律按照片 ID 查池；页面里不再有 photosUnder(dir) / sidecarByDir[dir]。 ---- */
 
 /**
- * 由 collection + id + 相对路径解析出可渲染的照片：URL + sidecar 条目（真实宽高 / EXIF）。
- * 找不到 sidecar 条目（缺宽高 = §6 硬约束不可接受）时返回 null，调用方据此跳过该图，绝不写死尺寸。
+ * 照片 ID -> 可渲染的一张图：URL + 缩略图 URL + 池 sidecar 条目（真实宽高 / EXIF）。
+ * 池里没有这条记录（缺宽高 = §6 硬约束不可接受）时返回 null，调用方据此跳过该图，绝不写死尺寸。
  */
 function resolvePhoto(
-  collection: string,
-  id: string,
-  file: string,
-): { dir: string; url: string; thumbUrl: string; entry: PhotoEntry } | null {
-  const dir = entryResourceDir(collection, id);
-  const entry = (sidecarByDir[dir] ?? []).find((e) => e.file === file);
+  idOrPath: string,
+): { url: string; thumbUrl: string; entry: PhotoEntry } | null {
+  const entry = findPoolPhoto(poolSidecar, idOrPath);
   if (!entry) return null;
   return {
-    dir,
-    url: contentImageUrl(dir, file),
-    thumbUrl: contentImageUrl(dir, entry.thumb),
+    url: contentImageUrl(POOL_DIR, entry.file),
+    thumbUrl: contentImageUrl(POOL_DIR, entry.thumb),
     entry,
   };
+}
+
+/** 资源夹名（= 详情路由 slug），与各详情页 getStaticPaths 同口径。 */
+function slugOf(collection: 'series' | 'posts', id: string): string {
+  const dir = entryResourceDir(collection, id);
+  return dir.split('/').pop() ?? id;
 }
 
 /* ---- 日期口径：统一 UTC 取日期部分，避免按本地时区偏移一天（与 ExifCard 同口径）---- */
@@ -116,7 +98,9 @@ const publishedSeries = await getPublishedSeries();
 const publishedPosts = await getPublishedPosts();
 const [firstSeries] = publishedSeries;
 
-/* ---- 精选区：site.json.featured.photos -> 解析后的可渲染项（缺 sidecar 的自动跳过）---- */
+/* ---- 精选区：site.json.featured.photos（照片 ID + 人工文案）-> 解析后的可渲染项
+ *      入口链接按「这张照片出现在哪个已发布条目的 photos[] 里」反查（D4：三元组已废除，
+ *      站点数据不再记 collection/id，避免同一事实写两处）。---- */
 interface Plate {
   url: string;
   /** 缩略图 URL（灯箱「秒开」那一层；与 url 同一张 sidecar 记录的两种产物） */
@@ -132,11 +116,31 @@ interface FeaturedItem extends Plate {
   dataFrame: string;
 }
 
+/** 照片归属的已发布条目路由；找不到（图不在任何条目里）返回空串，调用方退化为非链接卡。 */
+function ownerHref(token: string): string {
+  const photoId = photoIdOf(token);
+  const series = publishedSeries.find((e) =>
+    (e.data.photos ?? []).some((id) => photoIdOf(id) === photoId),
+  );
+  if (series) return `/series/${slugOf('series', series.id)}/`;
+  const post = publishedPosts.find((e) =>
+    (e.data.photos ?? []).some((id) => photoIdOf(id) === photoId),
+  );
+  if (post) return `/posts/${slugOf('posts', post.id)}/`;
+  return '';
+}
+
 const featured: FeaturedItem[] = [];
 (site.featured?.photos ?? []).forEach(
-  (f: { collection: string; id: string; file: string; title?: string; alt?: string }, i) => {
-    const photo = resolvePhoto(f.collection, f.id, f.file);
-    if (!photo) return; // 挑了不存在的图：不渲染空板，也不伪造宽高
+  (f: { photo: string; title?: string; alt?: string }, i) => {
+    const photo = resolvePhoto(f.photo);
+    if (!photo) {
+      // 挑了池里没有的图：不渲染空板，也不伪造宽高（与旧口径一致）
+      console.warn(
+        `[home] site.json 的 featured 引用了「${f.photo}」，照片池 sidecar（pool/photos.meta.json）里没有这条记录：已跳过。`,
+      );
+      return;
+    }
     featured.push({
       url: photo.url,
       thumb: photo.thumbUrl,
@@ -145,13 +149,13 @@ const featured: FeaturedItem[] = [];
       alt: f.alt ?? f.title ?? '精选照片',
       title: f.title ?? '',
       exif: photo.entry.exif,
-      href: `/${f.collection}/${f.id}/`,
+      href: ownerHref(f.photo),
       dataFrame: String(i),
     });
   },
 );
 
-/* ---- 开场跨页 LCP 图：优先精选第一张，退回首个已发布系列封面；都从 sidecar 取真宽高 ---- */
+/* ---- 开场跨页 LCP 图：优先精选第一张，退回首个已发布系列封面（A5 三级回退）；都从池取真宽高 ---- */
 let opening: Plate | null = null;
 if (featured[0]) {
   const f = featured[0];
@@ -165,7 +169,7 @@ if (featured[0]) {
     exif: f.exif,
   };
 } else if (firstSeries) {
-  const p = resolvePhoto('series', firstSeries.id, firstSeries.data.cover);
+  const p = resolvePhoto(resolveCoverPhotoId(firstSeries.data.cover, firstSeries.data.photos));
   if (p) {
     opening = {
       url: p.url,
@@ -179,7 +183,7 @@ if (featured[0]) {
   }
 }
 
-/* ---- 最新系列卡片数据：张数走共享 photoCount（sidecar 优先、缺 sidecar 兜底告警）---- */
+/* ---- 最新系列卡片数据：张数走共享 photoCount（photos.length）；封面按照片 ID 查池（A5 三级回退）---- */
 interface SeriesCard {
   href: string;
   title: string;
@@ -200,15 +204,9 @@ const latestSeries: SeriesCard[] = [...publishedSeries]
   })
   .slice(0, LATEST_SERIES_N)
   .map((entry) => {
-    const dir = entryResourceDir('series', entry.id);
-    const folderId = dir.split('/').pop() ?? entry.id;
-    const count = resolveSeriesCount({
-      sidecar: sidecarByDir[dir] ?? null,
-      files: photosUnder(dir),
-      entryId: folderId,
-      onWarn: warnMissingSidecar,
-    });
-    const photo = resolvePhoto('series', entry.id, entry.data.cover);
+    const folderId = slugOf('series', entry.id);
+    const count = resolveSeriesCount({ photos: entry.data.photos });
+    const photo = resolvePhoto(resolveCoverPhotoId(entry.data.cover, entry.data.photos));
     return {
       href: `/series/${folderId}/`,
       title: entry.data.title,
@@ -238,9 +236,8 @@ const latestPosts: PostCard[] = [...publishedPosts]
   .sort((a, b) => b.data.date.getTime() - a.data.date.getTime())
   .slice(0, LATEST_POSTS_N)
   .map((entry) => {
-    const dir = entryResourceDir('posts', entry.id);
-    const folderId = dir.split('/').pop() ?? entry.id;
-    const photo = resolvePhoto('posts', entry.id, entry.data.cover);
+    const folderId = slugOf('posts', entry.id);
+    const photo = resolvePhoto(resolveCoverPhotoId(entry.data.cover, entry.data.photos));
     return {
       href: `/posts/${folderId}/`,
       title: entry.data.title,
@@ -353,7 +350,7 @@ const homeFrameTotal: number = registry.frames.length;
           </div>
           <div class="home-grid home-grid--featured rise">
             {featured.map((item, i) => (
-              <a class="home-entry" href={item.href}>
+              <a class="home-entry" href={item.href || undefined}>
                 <PhotoPlate
                   src={item.url}
                   width={item.width}

@@ -46,16 +46,12 @@
   "featured": {
     "photos": [
       {
-        "collection": "series",
-        "id": "city-lights",
-        "file": "photos/night-01.webp",
+        "photo": "night-01.webp",
         "title": "夜光 · 城市",
         "alt": "城市入夜：霓虹在湿路面拖出长光带，远处楼宇只剩灯的轮廓"
       },
       {
-        "collection": "series",
-        "id": "city-lights",
-        "file": "photos/night-02.webp",
+        "photo": "night-02.webp",
         "title": "夜光 · 城市 · 街角",
         "alt": "街口夜景：路灯与橱窗把转角照出一小片暖光"
       }
@@ -66,6 +62,6 @@
     "sources": "口径来源 = PRODUCT.md（品牌与设备事实）+ doc/designv0.0.1.md §10 + doc/preview/home.html。",
     "nav": "四项 = 首页 / 系列列表 / 随笔列表 / 关于（design §5 页面清单）。label 用视觉稿的书脊措辞（开卷…版权页），href 是路由真值；当前项由 Base.astro 的 current prop 决定 aria-current。",
     "placeholder": "social[].placeholder / contact.placeholder / intro.sample / indexNote.sample = true 表示值尚未由作者确认为真——渲染时必须带朱砂 ※示例 标注（design.json 规则：未经 ※示例 标注不得展示虚构数据）。",
-    "featured": "首页精选区挑图（design §2「站点级内容：首页精选区（手动挑选入口图）」）故意留空，由 home-page 模块按需补加字段；建议元素形状 { collection, id, file, title }。"
+    "featured": "首页精选区挑图（design §2「站点级内容：首页精选区（手动挑选入口图）」）：元素形状 { photo, title, alt } —— photo = 池内照片 ID（含 .webp），title/alt = 人工文案。不再记 collection/id/file 三元组（admin-v2.md D4 / K3）：入口链接由首页按照片反查它所属的已发布条目。"
   }
 }

@@ -1,31 +1,49 @@
 // =============================================================================
 // postIllustrations —— 随笔「正文内联插图」的构建期管线（posts-pages 任务 4）
 //
-// 要解决的问题：随笔 .md 正文里以相对路径引用的同名资源夹图片（`![说明](photos/dawn-01.webp)`）
+// 要解决的问题：随笔 .md 正文里以 `![说明](photo:照片ID)` 引用的池内照片，
 // 在最终 HTML 里必须同时满足三件事——
-//   ① src 解析成可服务 URL（走 contentImageUrl 单一出口，边界③），绝不留 `photos/…` 相对路径；
-//   ② 注入该图 sidecar 条目的**真实** width/height（§6 显式宽高防布局抖动）；缺 sidecar 条目
-//      就记构建期告警、跳过它的灯箱，**不伪造尺寸**；
+//   ① src 解析成可服务 URL（走 contentImageUrl 单一出口，边界③），绝不留 `photo:` 协议头
+//      或 `photos/…` 相对路径；
+//   ② 注入该照池 sidecar 条目的**真实** width/height（§6 显式宽高防布局抖动）；缺 sidecar
+//      条目就记构建期告警、跳过它的灯箱，**不伪造尺寸**；
 //   ③ 包成灯箱图版：data-lightbox / data-lightbox-gallery="post-<slug>" / data-lightbox-index，
 //      并进入归属该随笔的 frames JSON 岛（§2 灯箱数据契约）。
+//
+// ---- 插图语法（admin-v2.md D2a 已定，v0.1.1）----
+//   正文写 `![说明](photo:照片ID)`：
+//     `photo:`  协议头（本项目自定，仅出现在 markdown 源里，绝不外泄到产物）；
+//     照片 ID = 池内完整文件名含 .webp（如 `dawn-01.webp`）；
+//     方括号里的说明文字即 alt。
+//   旧的相对路径写法（`![…](<资源夹>/photos/dawn-01.webp)`）已退役：不再当插图处理，
+//   只发一条构建期告警并把图留在正文里（能解析出 URL 就让它能加载），**不**伪造宽高、
+//   **不**接灯箱。迁移由 D5 一次性改写完成，之后新写正文一律用新语法。
 //
 // 实现方式 = 交付清单里的 (b)「render 得 HTML 后做字符串后处理」，不是 (a) rehype 插件。原因：
 //   - Astro 7 的 markdown 管线会把正文里的**本地**图片改写成占位属性
 //     `<img __ASTRO_IMAGE_="{&quot;src&quot;:&quot;photos/dawn-01.webp&quot;,…}">`（真 src 被摘掉），
-//     只有走 `<Content />` 时才由 astro:content 的 render() 异步回填；
+//     只有走 `<Content />` 时才由 astro:content 的 render() 异步回填；`photo:` 这类自定协议
+//     不是「本地图片」，Astro 不认、也不会去解析它，正好把引用原样留给本模块；
 //   - 而灯箱接线需要 PhotoPlate **组件**（scoped 样式 + PageChip / ExifCard 复用），
 //     rehype 插件产出的是 HTML 字符串，既拿不到组件、也拿不到 sidecar 真值。
-//   - 所以：取 entry.rendered.html（含占位属性）→ 本模块切成「文本片段」与「插图引用」交替的
-//     parts → 页面用 set:html 落文本、用 PhotoPlate 落插图。文字与图版同流交替，
-//     正是「文字为主、插图为辅」。
+//   - 所以：取 entry.rendered.html（含占位属性 / 原样的 photo: 引用）→ 本模块切成
+//     「文本片段」与「插图引用」交替的 parts → 页面用 set:html 落文本、用 PhotoPlate 落插图。
+//     文字与图版同流交替，正是「文字为主、插图为辅」。
 //   - 未命中 sidecar 的图：仍当普通 `<img>` 留在文本段里（至多把 src 解析成可服务 URL），
 //     但**不**给它 data-lightbox、**不**给它宽高。
 //
+// 三条既有契约（A/B 组之外的硬红线，改数据来源不许改它们）：
+//   ① 不伪造宽高：sidecar 缺条目 → 告警 + 跳过灯箱，绝不猜尺寸；
+//   ② 不占空帧：产物不在构建图里 → 也不进 frames（不留「有帧号却没图」的空壳）；
+//   ③ 重复引用复用帧号：正文里同一张图出现两次 → 两块图版、一个灯箱帧。
+//
 // 本文件刻意保持纯函数、零 Astro / 零 Node 依赖（URL 解析与告警都走注入），可在 Vitest 直接跑。
-// 与 noteBody / photoCount 同一设计口径。
 // =============================================================================
 
 import type { Exif, PhotoEntry, PhotoSidecar } from '../types/photoSidecar';
+
+/** 插图引用协议头：`![说明](photo:照片ID)`。 */
+export const PHOTO_REF_SCHEME = 'photo:';
 
 /** Astro markdown 管线给本地图片打的占位属性（值是一段被实体转义的 JSON，含 src / alt / index）。 */
 const ASTRO_IMAGE_ATTR = /__ASTRO_IMAGE_\s*=\s*"([^"]*)"/i;
@@ -69,7 +87,9 @@ function baseName(path: string): string {
 }
 
 /**
- * 把正文里的相对路径归一成「可拿去问 sidecar 的形」（收成 `photos/x.webp`）。
+ * 把正文里的相对路径归一成「旧 sidecar 口径的形」（收成 `photos/x.webp`）。
+ *
+ * ⚠️ 保留给 **迁就层** 用（contentImages 的多形查表依赖它），不是新插图语法的入口。
  * 正文写法多样：`photos/x.webp` / `./photos/x.webp` / `/src/content/posts/<slug>/photos/x.webp`
  * / Astro 占位属性里已带目录前缀的串，一律走同一口径。
  */
@@ -81,19 +101,65 @@ export function normalizeIllustrationPath(raw: string): string {
   return tail.join('/');
 }
 
-/** sidecar 里查这张图：先精确、再目录尾段、最后 basename（容住资源目录前缀差异）。 */
-export function findSidecarIndex(sidecar: PhotoSidecar, relPath: string): number {
-  const rel = normalizeIllustrationPath(relPath);
-  if (!rel || !Array.isArray(sidecar)) return -1;
-  const exact = sidecar.findIndex((e) => e.file === rel);
-  if (exact >= 0) return exact;
-  const bySuffix = sidecar.findIndex(
-    (e) => e.file.endsWith(`/${rel}`) || rel.endsWith(`/${e.file}`),
-  );
-  if (bySuffix >= 0) return bySuffix;
-  const base = baseName(rel);
-  if (!base) return -1;
-  return sidecar.findIndex((e) => baseName(e.file) === base && !base.endsWith('.thumb.webp'));
+/** 是否是新的 `photo:` 协议引用（大小写不敏感，容忍前导空白）。 */
+export function isPhotoRef(raw: string): boolean {
+  return /^photo:/i.test(String(raw ?? '').trim());
+}
+
+/**
+ * `photo:` 引用 → 照片 ID（`dawn-01.webp`）。不是 photo 引用则返回空串。
+ * 容忍 ID 前多写的 `photos/`（`photo:photos/dawn-01.webp` 同样取末段）。
+ */
+export function photoIdOfRef(raw: string): string {
+  const value = String(raw ?? '').trim();
+  if (!isPhotoRef(value)) return '';
+  return baseName(value.replace(/^photo:/i, ''));
+}
+
+/** 正文插图引用的来源分类。 */
+export type IllustrationSource =
+  /** 新语法：`photo:` + 池内照片 ID */
+  | { kind: 'photo'; id: string }
+  /** 退役写法：旧相对路径（告警 + 不接灯箱） */
+  | { kind: 'legacyPath'; rel: string }
+  /** 外链 / data: / blob: / 站点绝对路径：不是资源夹插图，原样留着 */
+  | { kind: 'external' };
+
+/**
+ * 判定一枚 `<img>` 的 src 属于哪一类引用。
+ *
+ * 判定顺序刻意如此：先认 `photo:`（自定协议，会先被 `外部` 的 scheme 正则命中，必须前置），
+ * 再认外链 / 站点绝对路径，最后才落到「旧相对路径」。
+ */
+export function parseIllustrationSource(raw: string): IllustrationSource {
+  const value = String(raw ?? '').trim();
+  if (isPhotoRef(value)) {
+    const id = photoIdOfRef(value);
+    return id ? { kind: 'photo', id } : { kind: 'legacyPath', rel: value };
+  }
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(value)) return { kind: 'external' };
+  const rel = normalizeIllustrationPath(value);
+  return { kind: 'legacyPath', rel };
+}
+
+/**
+ * 引用 → 池 sidecar 的匹配键（照片 ID = 末段文件名）。
+ * 新语法 `photo:x.webp` 与旧路径 `a/b/photos/x.webp` 都归一到 `x.webp`；
+ * 展示图与缩略图（`x.thumb.webp`）是两个不同 ID，不会互相命中。
+ */
+export function refPhotoId(raw: string): string {
+  const value = String(raw ?? '').trim();
+  return baseName(value.replace(/^photo:/i, ''));
+}
+
+/**
+ * 在（全局）池 sidecar 里查这张照片：按照片 ID 精确匹配 file 的末段。
+ * 未命中返回 -1 —— 调用方据此告警并跳过灯箱，绝不猜宽高。
+ */
+export function findSidecarIndex(sidecar: PhotoSidecar, idOrPath: string): number {
+  const id = refPhotoId(idOrPath);
+  if (!id || !Array.isArray(sidecar)) return -1;
+  return sidecar.findIndex((entry) => baseName(entry.file) === id);
 }
 
 /**
@@ -142,17 +208,20 @@ export interface ProcessedPostBody {
   frames: IllustrationRef[];
   /** 命中的插图图版总数（含重复引用） */
   plateCount: number;
-  /** 未命中 sidecar、按普通 <img> 留在文本里的引用（已记告警） */
+  /** 未命中 / 写法退役、按普通 <img> 留在文本里的引用（已记告警） */
   skipped: string[];
 }
 
 export interface ProcessIllustrationsOptions {
   /** Astro 渲染好的正文 HTML（entry.rendered.html，可能含 __ASTRO_IMAGE_ 占位属性） */
   html: string;
-  /** 该随笔资源夹的 sidecar（photos.meta.json）；缺省视为空表 */
+  /**
+   * 全局池 sidecar（src/content/pool/photos.meta.json）。缺省视为空表 ——
+   * 于是所有插图走「缺条目」告警分支，正文照出不炸。
+   */
   sidecar?: PhotoSidecar | null;
   /**
-   * 相对路径 -> 展示图可服务 URL（页面注入 contentImageUrl + resolveContentImage 的结果）。
+   * 照片 ID / 相对路径 -> 展示图可服务 URL（页面注入 contentImageUrl + resolveContentImage 的结果）。
    * **契约：解析不出（产物不在构建图里）必须返回空串**，本模块据此判断要不要接线；
    * 不注入时留归一化相对路径，便于单测断言。
    */
@@ -169,8 +238,8 @@ export interface ProcessIllustrationsOptions {
  * 步骤：
  *   1. 扫每枚 `<img>`：优先从 __ASTRO_IMAGE_ 占位属性取 src/alt（Astro 会把本地图的 src 摘掉），
  *      退化才读普通 src/alt；
- *   2. 归一相对路径 → 问 sidecar；命中则把整枚标签换成 `<!--astro-illus:N-->` 记号并登记 ref，
- *      未命中则原样留在这段的 HTML 里（不伪造宽高、不接灯箱）并按情况告警；
+ *   2. 认 `photo:` → 按照片 ID 问池 sidecar；命中则把整枚标签换成 `<!--astro-illus:N-->` 记号
+ *      并登记 ref；未命中 / 旧写法 / 外链则原样留在这段的 HTML 里（不伪造宽高、不接灯箱）；
  *   3. 命中记号若独占一个 `<p>`（正文里图片常单独成段），剥掉那对空段落，避免残留 `<p></p>`；
  *   4. 按记号把 HTML 切成 parts（文本段 / 插图交替），回填 frameIndex（重复引用复用首帧号）。
  */
@@ -185,7 +254,7 @@ export function processPostIllustrations(
 
   const refs: IllustrationRef[] = [];
   const skipped: string[] = [];
-  /** sidecarIndex -> 首次出现的 ordinal；重复引用据此复用帧号 */
+  /** sidecarIndex -> 首次出现的 ref；重复引用据此复用帧号 */
   const firstBySidecar = new Map<number, IllustrationRef>();
   let ordinal = 0;
 
@@ -232,36 +301,51 @@ export function processPostIllustrations(
     if (!rawSrc) rawSrc = attrValue(tag, SRC_ATTR);
     if (!alt) alt = attrValue(tag, ALT_ATTR);
 
-    const rel = normalizeIllustrationPath(rawSrc);
-    // 外链 / data: / blob: / 站点绝对路径：不是资源夹里的插图，原样留着（basename 撞上也不算）
-    const external = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(String(rawSrc).trim());
-    const index = external || !rel || table.length === 0 ? -1 : findSidecarIndex(table, rel);
+    const source = parseIllustrationSource(rawSrc);
 
-    if (index < 0) {
-      // 未命中 sidecar：没有真实宽高可注入，也就不接灯箱（§2「不伪造尺寸」）——按交付要求记告警。
-      if (!rel || external || !/\.[a-z0-9]+$/i.test(rel)) return dropPlaceholder(tag);
+    // 外链 / data: / blob: / 站点绝对路径：不是池里的插图，原样留着（只剥 Astro 占位属性）
+    if (source.kind === 'external') return dropPlaceholder(tag);
+
+    // 退役的相对路径写法：不再当插图（不计帧、不伪造宽高），但尽量让图还能加载。
+    if (source.kind === 'legacyPath') {
+      const rel = source.rel;
+      if (!rel || !/\.[a-z0-9]+$/i.test(rel)) return dropPlaceholder(tag);
       onWarn?.(
-        `[posts] 正文插图「${rel}」在 sidecar（photos.meta.json）里没有对应条目：` +
-          ` 已跳过它的灯箱帧且不伪造宽高。请补跑 \`npm run import -- --post <日期-标题>\`。`,
+        `[posts] 正文插图「${rel}」是旧相对路径写法，已退役：请改成 ![说明](photo:照片ID)` +
+          `（照片 ID = 池内文件名，如 dawn-01.webp）。本次已跳过它的灯箱帧且不伪造宽高。`,
       );
       skipped.push(rel);
-      // 尽量让图还能加载：产物在构建图里就把 src 换成可服务 URL，否则原样留着。
       const fallback = resolve(rel);
       return fallback ? withSrc(tag, fallback, alt) : dropPlaceholder(tag);
     }
 
-    // 命中 sidecar：先确认产物真在构建图里（URL 解析得出），否则整张退回普通 <img>，
-    // 不留一个「有帧号却没图」的空壳。
+    // ---- 新语法 photo:<ID> ----
+    const id = source.id;
+    const index = table.length === 0 ? -1 : findSidecarIndex(table, id);
+
+    if (index < 0) {
+      // 缺 sidecar 条目：没有真实宽高可注入，也就不接灯箱（不伪造尺寸契约）。
+      onWarn?.(
+        `[posts] 正文插图 photo:${id} 在照片池 sidecar（pool/photos.meta.json）里没有对应条目：` +
+          ` 已跳过它的灯箱帧且不伪造宽高。请把这张图导入照片池：\`npm run import --pool\`。`,
+      );
+      skipped.push(id);
+      // 尽量让图还能加载：产物在构建图里就把 src 换成可服务 URL，否则剥掉不可加载的协议头。
+      const fallback = resolve(id);
+      return fallback ? withSrc(tag, fallback, alt) : withSrc(tag, `photos/${id}`, alt);
+    }
+
+    // 命中 sidecar：再确认产物真在构建图里（URL 解析得出），否则整张退回普通 <img>，
+    // 不留一个「有帧号却没图」的空壳（不占空帧契约）。
     const photo = table[index];
-    const fileRel = normalizeIllustrationPath(photo.file);
-    const srcUrl = resolve(fileRel);
+    const srcUrl = resolve(photo.file);
     if (!srcUrl) {
       onWarn?.(
-        `[posts] 正文插图「${fileRel}」在 sidecar 里有记录，但构建产物里找不到该文件：` +
-          ` 已跳过它的灯箱帧，请重跑 \`npm run import -- --post <日期-标题>\`。`,
+        `[posts] 正文插图 photo:${id} 在池 sidecar 里有记录，但构建产物里找不到该文件：` +
+          ` 已跳过它的灯箱帧，请重跑 \`npm run import --pool\`。`,
       );
-      skipped.push(fileRel);
-      return withSrc(tag, fileRel, alt);
+      skipped.push(id);
+      return withSrc(tag, photo.file, alt);
     }
 
     const first = firstBySidecar.get(index);
@@ -269,13 +353,13 @@ export function processPostIllustrations(
     ordinal += 1;
     const ref: IllustrationRef = {
       ordinal: current,
-      // frameIndex 先按出现次序占位，下面按 sidecar 序统一回填
+      // frameIndex 先按出现次序占位，下面按正文首现顺序统一回填
       frameIndex: current,
       sidecarIndex: index,
       photo,
       alt,
       src: srcUrl,
-      thumb: resolveThumb(normalizeIllustrationPath(photo.thumb)) || srcUrl,
+      thumb: resolveThumb(photo.thumb) || srcUrl,
       duplicate: first !== undefined, // 正文里第二次引用同一张：不再占一个新帧
     };
     refs.push(ref);
@@ -305,10 +389,10 @@ export function processPostIllustrations(
   if (tail.trim()) parts.push({ kind: 'html', html: tail });
 
   // 帧序列：每张命中插图恰好一帧（重复引用不重复占帧）。
-  // 顺序按 **sidecar 下标升序** —— 与 §2「frames 按 sidecar 顺序」和系列页同一口径；
-  // DOM 里的图版仍随正文阅读顺序出现，只是 data-lightbox-index 取 sidecar 序（两者可不同，
-  // 且始终一一对应：岛里第 i 帧 = 页面上 data-lightbox-index="i" 的那张图版）。
-  const frames = refs.filter((r) => !r.duplicate).sort((a, b) => a.sidecarIndex - b.sidecarIndex);
+  // 顺序 = **正文首现顺序**（池化后不再有「条目自己的 sidecar 顺序」可依；
+  // 读者点开灯箱时前后翻的是这篇的阅读顺序，与系列页「按 photos[] 顺序」同一精神）。
+  // refs 本来就是按扫 HTML 的先后 push 的，未重复的那些即首现顺序。
+  const frames = refs.filter((r) => !r.duplicate);
   frames.forEach((r, i) => {
     r.frameIndex = i;
   });

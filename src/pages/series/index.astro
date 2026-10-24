@@ -10,7 +10,7 @@
  * 硬约束（勿偏离）：
  *   - 复用 Base.astro（书脊/导航/页脚/入场编排），current="series"；
  *   - 排 draft + 按 order 再日期排序：一律 getPublishedSeries()（不各自 filter）；
- *   - 张数唯一口径 = resolveSeriesCount（复用 photoCount，sidecar 优先、缺则兜底并告警）；
+ *   - 张数唯一口径 = resolveSeriesCount（photos.length）；封面按照片 ID 查池、A5 三级回退；
  *   - 图片 URL 只经 contentImageUrl / entryResourceDir（边界③），宽高只从 sidecar 取；
  *   - 封面用缩略图（thumb + thumbWidth/thumbHeight），不用展示图，控首屏字节；
  *   - v1 无标签页 / 无搜索 / 无编号分页（§5 暂不做）；朱砂仅盖章级 ≤5%（.no 复用 global）；
@@ -19,31 +19,12 @@
 import Base from '../../layouts/Base.astro';
 import PhotoPlate from '../../components/PhotoPlate.astro';
 import { getPublishedSeries } from '../../utils/collections';
-import { contentImageUrl, contentImageMap, entryResourceDir } from '../../utils/contentImages';
+import { POOL_DIR, contentImageUrl, entryResourceDir } from '../../utils/contentImages';
+import { findPoolPhoto, poolSidecar, resolveCoverPhotoId } from '../../utils/photoPool';
 import { resolveSeriesCount } from '../../utils/photoCount';
-import type { PhotoSidecar } from '../../types/photoSidecar';
 
-/* ---- sidecar：目录 -> photos.meta.json 数组（与首页同法，import.meta.glob 构建期解析）---- */
-const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, PhotoSidecar>;
-
-const sidecarByDir: Record<string, PhotoSidecar> = {};
-for (const [key, mod] of Object.entries(sidecarModules)) {
-  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
-  sidecarByDir[dir] = mod;
-}
-
-/** 某条目 photos/ 下的图片路径列表（含缩略图；兜底计数内部会排除 .thumb.webp）。 */
-function photosUnder(dir: string): string[] {
-  const prefix = `${dir}/photos/`;
-  return Object.keys(contentImageMap).filter((k) => k.startsWith(prefix));
-}
-
-function warnMissingSidecar(message: string): void {
-  console.warn(message);
-}
+/* ---- 照片池化（admin-v2.md D3 / G2）：张数 = frontmatter photos.length；
+ *      封面按照片 ID 查**全局** sidecar（A5 三级回退）；不再有 photosUnder(dir) / sidecarByDir[dir]。 ---- */
 
 /**
  * 内容图片 URL：仍只经 contentImageUrl（边界③），但兜住 Vite 内联副作用——
@@ -92,13 +73,11 @@ interface TocRow {
 const rows: TocRow[] = ordered.map((entry, i) => {
   const dir = entryResourceDir('series', entry.id);
   const slug = dir.split('/').pop() ?? entry.id;
-  const count = resolveSeriesCount({
-    sidecar: sidecarByDir[dir] ?? null,
-    files: photosUnder(dir),
-    entryId: slug,
-    onWarn: warnMissingSidecar,
-  });
-  const coverEntry = (sidecarByDir[dir] ?? []).find((e) => e.file === entry.data.cover) ?? null;
+  const count = resolveSeriesCount({ photos: entry.data.photos });
+  const coverEntry = findPoolPhoto(
+    poolSidecar,
+    resolveCoverPhotoId(entry.data.cover, entry.data.photos),
+  );
   return {
     href: `/series/${slug}/`,
     no: `No.${String(i + 1).padStart(2, '0')}`,
@@ -107,7 +86,7 @@ const rows: TocRow[] = ordered.map((entry, i) => {
     count,
     cover: coverEntry
       ? {
-          url: serveUrl(dir, coverEntry.thumb),
+          url: serveUrl(POOL_DIR, coverEntry.thumb),
           width: coverEntry.thumbWidth,
           height: coverEntry.thumbHeight,
           alt: `${entry.data.title} · 封面`,

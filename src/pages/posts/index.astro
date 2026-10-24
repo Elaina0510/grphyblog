@@ -18,31 +18,11 @@
  * ==========================================================================*/
 import Base from '../../layouts/Base.astro';
 import { getPublishedPosts } from '../../utils/collections';
-import { contentImageMap, entryResourceDir } from '../../utils/contentImages';
+import { entryResourceDir } from '../../utils/contentImages';
 import { resolveSeriesCount } from '../../utils/photoCount';
-import type { PhotoSidecar } from '../../types/photoSidecar';
 
-/* ---- sidecar：目录 -> photos.meta.json 数组（与首页 / 系列列表同法，构建期解析）---- */
-const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, PhotoSidecar>;
-
-const sidecarByDir: Record<string, PhotoSidecar> = {};
-for (const [key, mod] of Object.entries(sidecarModules)) {
-  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
-  sidecarByDir[dir] = mod;
-}
-
-/** 某条目 photos/ 下的图片路径列表（含缩略图；兜底计数内部会排除 .thumb.webp）。 */
-function photosUnder(dir: string): string[] {
-  const prefix = `${dir}/photos/`;
-  return Object.keys(contentImageMap).filter((k) => k.startsWith(prefix));
-}
-
-function warnMissingSidecar(message: string): void {
-  console.warn(message);
-}
+/* ---- 照片池化（admin-v2.md D3 / G2）：帧数唯一口径 = frontmatter photos.length，
+ *      列表本身不放缩略图，因此不再需要任何 sidecar 查询 / photosUnder(dir) 兜底。 ---- */
 
 /** 日期口径：UTC 取日期部分，印刷口径 YYYY.MM.DD（与首页 / 系列页同）。 */
 function fmtDate(value: Date | string): string {
@@ -95,14 +75,8 @@ interface TocRow {
 }
 
 const rows: TocRow[] = ordered.map((entry, i) => {
-  const dir = entryResourceDir('posts', entry.id);
   const slug = slugOf(entry.id);
-  const count = resolveSeriesCount({
-    sidecar: sidecarByDir[dir] ?? null,
-    files: photosUnder(dir),
-    entryId: slug,
-    onWarn: warnMissingSidecar,
-  });
+  const count = resolveSeriesCount({ photos: entry.data.photos });
   return {
     href: `/posts/${slug}/`,
     no: `No.${String(i + 1).padStart(2, '0')}`,

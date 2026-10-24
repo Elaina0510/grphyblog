@@ -14,16 +14,34 @@ import Base from '../layouts/Base.astro';
 import PhotoPlate from '../components/PhotoPlate.astro';
 import ExifCard from '../components/ExifCard.astro';
 import SiteMark from '../components/SiteMark.astro';
-import { contentImageUrl, entryResourceDir } from '../utils/contentImages';
-import type { PhotoSidecar } from '../types/photoSidecar';
-import sidecarJson from '../content/series/daily-frames/photos.meta.json';
+import { getCollection } from 'astro:content';
+import { POOL_DIR, contentImageUrl } from '../utils/contentImages';
+import { findPoolPhoto, poolSidecar } from '../utils/photoPool';
+import type { PhotoEntry } from '../types/photoSidecar';
 
-/** 演示用的真条目：series/daily-frames（导入脚本产出的 sidecar 与图片都在里面）。 */
-const entryDir = entryResourceDir('series', 'daily-frames/index.md');
-const photos = sidecarJson as unknown as PhotoSidecar;
+/**
+ * 演示用的真条目：series/daily-frames（照片池里的真产物 + 真 EXIF）。
+ * 池化后照片元数据只有一份全局 sidecar，条目侧只存照片 ID 列表（admin-v2.md D1/D3），
+ * 故本页读 daily-frames 的 photos[] 再逐张查池 —— 与前台同一口径，不再 import 条目级 sidecar。
+ * 这是演示路由而非公开页面，特意允许取到 draft 条目当活体数据。
+ */
+const demoNames: string[] = [];
+const demoEntry = (await getCollection('series')).find((e) =>
+  e.id.replace(/\/index\.md$/, '').replace(/\.md$/, '') === 'daily-frames',
+);
+if (Array.isArray(demoEntry?.data.photos)) demoNames.push(...demoEntry.data.photos);
+
+const fromEntry = demoNames
+  .map((id) => findPoolPhoto(poolSidecar, id))
+  .filter((entry): entry is PhotoEntry => Boolean(entry));
+/** 池里查不全就退回池内前四张：演示页宁可用别的真图，也不能空转。 */
+const photos: PhotoEntry[] = fromEntry.length >= 4 ? fromEntry : poolSidecar.slice(0, 4);
+if (photos.length < 4) {
+  throw new Error('[visual-demo] 照片池（src/content/pool/photos.meta.json）里不足 4 张，演示页无法组装。');
+}
 const [portrait, second, third, fourth] = photos;
 
-const urlOf = (rel: string) => contentImageUrl(entryDir, rel);
+const urlOf = (rel: string) => contentImageUrl(POOL_DIR, rel);
 
 /** 色板：四色 + 派生阶。值只存在于 global.css，本页只引用 var()。 */
 const swatches: Array<{ value: string; role: string }> = [

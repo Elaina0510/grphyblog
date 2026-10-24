@@ -25,7 +25,8 @@ export interface ExifItem {
 }
 
 /** 字段 → 中文标签（灯箱 sheet 用；措辞取自 design §4 的「机型/镜头/焦距/光圈/快门/ISO/日期」）。 */
-export const EXIF_LABELS: Record<keyof Exif, string> = {
+// 只给 7 个可显示字段配标签：Exif.exifIncomplete 是「待补」标记，不是参数行的一部分
+export const EXIF_LABELS: Record<Exclude<keyof Exif, 'exifIncomplete'>, string> = {
   camera: '机型',
   lens: '镜头',
   focalLength: '焦距',

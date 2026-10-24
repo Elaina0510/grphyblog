@@ -11,13 +11,13 @@ import { glob } from 'astro/loaders';
 
 import { postsSchema, seriesSchema } from './content/schemas';
 
-/** 系列：src/content/series/<系列标识>/index.md（图片与 photos.meta.json 同放该子目录）。 */
+/** 系列：src/content/series/<系列标识>/index.md（照片在全局池 src/content/pool/photos/，frontmatter 用 photos[照片ID] 引用）。 */
 const series = defineCollection({
   loader: glob({ base: './src/content/series', pattern: '*/index.md' }),
   schema: seriesSchema,
 });
 
-/** 随笔：src/content/posts/<日期-标题>.md（同名资源文件夹放图 + photos.meta.json）。 */
+/** 随笔：src/content/posts/<日期-标题>.md（照片同样在全局池，frontmatter 用 photos[照片ID] 引用）。 */
 const posts = defineCollection({
   loader: glob({ base: './src/content/posts', pattern: '*.md' }),
   schema: postsSchema,

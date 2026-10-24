@@ -6,14 +6,14 @@
  *   ① 章节题行（竖排宋体题名 + 等宽册号朱砂 + 元数据）
  *   ② 封面满版跨页（首帧，LCP eager）
  *   ③ 拍摄手记（entry.body 渲染 · 左右对置 .duo；body 为空则整块自动省略）
- *   ④ 照片流（按 sidecar 顺序：PhotoPlate + PageChip 帧号 + ExifCard + 灯箱数据契约）
+ *   ④ 照片流（按 frontmatter photos[] 顺序：PhotoPlate + PageChip 帧号 + ExifCard + 灯箱数据契约）
  *   ⑤ 夜底灯箱外壳（<Lightbox />，仅在有帧时挂载；数据只读 ④ 的 frames 岛，不另起来源）
  *
  * 灯箱数据契约（§2，主 Agent 钉死，跨 home/series/posts 共用）：
  *   照片流容器内输出**一个**内联 JSON 岛：
  *     <script type="application/json" class="lightbox-frames" data-gallery="series-<slug>">
  *       {"frames":[{src,thumb,width,height,alt,title?,exif}, ...]}</script>
- *   frames 按 sidecar 顺序；src/thumb = contentImageUrl 解析后的可服务 URL；宽高 = 展示图真值。
+ *   frames 按 photos[] 顺序；src/thumb = contentImageUrl 解析后的可服务 URL；宽高 = 展示图真值。
  *   每张参与灯箱的图版根 <figure> 带 data-lightbox / data-lightbox-gallery / data-lightbox-index
  *   （经 PhotoPlate 的最小新增可选 prop lightbox/lightboxGallery/lightboxIndex 透传，不破坏既有）。
  *
@@ -21,7 +21,7 @@
  *   - getStaticPaths 只对**已发布**系列生成路由 → draft 天然 404；slug = entryResourceDir 末段；
  *   - 图片 URL 只经 contentImageUrl / entryResourceDir；宽高只从 sidecar 取；全部显式宽高 + lazy
  *     （唯首屏 LCP 那张 eager + fetchpriority=high）；
- *   - 张数/帧序列唯一口径 = sidecar（复用 photoCount 判定；顺序即 frames 顺序）；
+ *   - 张数唯一口径 = frontmatter photos.length（photoCount）；帧序列顺序 = photos[] 顺序；
  *   - 分批纯函数 planPhotoFlow（>30 张时 IO 追加渲染，§6）；当前种子 <30 属正常不分批；
  *   - 手记为空判定 = 纯函数 hasNoteContent（剥注释/符号后无可见文字即省略整块）；
  *   - 复用 Base / PhotoPlate / PageChip / ExifCard / SiteMark，导航品牌页脚不硬编码；
@@ -34,30 +34,16 @@ import ExifCard from '../../components/ExifCard.astro';
 import Lightbox from '../../components/Lightbox.astro';
 import type { CollectionEntry } from 'astro:content';
 import { getPublishedSeries } from '../../utils/collections';
-import { contentImageUrl, contentImageMap, entryResourceDir } from '../../utils/contentImages';
+import { contentImageUrl, entryResourceDir, POOL_DIR } from '../../utils/contentImages';
+import { findPoolPhoto, poolSidecar, resolveCoverPhotoId } from '../../utils/photoPool';
 import { resolveSeriesCount } from '../../utils/photoCount';
 import { planPhotoFlow } from '../../utils/paginateFlow';
 import { hasNoteContent } from '../../utils/noteBody';
-import type { Exif, PhotoEntry, PhotoSidecar } from '../../types/photoSidecar';
+import type { Exif } from '../../types/photoSidecar';
 
-/* ---- sidecar：目录 -> photos.meta.json 数组（与首页 / 列表页同法）---- */
-const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, PhotoSidecar>;
-
-const sidecarByDir: Record<string, PhotoSidecar> = {};
-for (const [key, mod] of Object.entries(sidecarModules)) {
-  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
-  sidecarByDir[dir] = mod;
-}
-function photosUnder(dir: string): string[] {
-  const prefix = `${dir}/photos/`;
-  return Object.keys(contentImageMap).filter((k) => k.startsWith(prefix));
-}
-function warnMissingSidecar(message: string): void {
-  console.warn(message);
-}
+/* ---- 照片池化（admin-v2.md D1 / G2）：照片流顺序 = frontmatter 的 photos[]，
+ *      宽高 / 缩略图 / EXIF 一律按照片 ID 去**全局** sidecar（pool/photos.meta.json）查；
+ *      页面里不再有「按条目目录兜底数图」的 photosUnder(dir) / sidecarByDir[dir]。 ---- */
 
 /**
  * 内容图片 URL：仍只经 contentImageUrl（边界③），但兜住一个 Vite 副作用——
@@ -102,17 +88,17 @@ const { entry } = Astro.props as { entry: CollectionEntry<'series'> };
 const dir = entryResourceDir('series', entry.id);
 const slug = dir.split('/').pop() ?? entry.id;
 const gallery = `series-${slug}`;
-const sidecar: PhotoSidecar = sidecarByDir[dir] ?? [];
-const frameCount = resolveSeriesCount({
-  sidecar,
-  files: photosUnder(dir),
-  entryId: slug,
-  onWarn: warnMissingSidecar,
-});
+
+/** frontmatter 的照片 ID 列表：顺序即前台照片流顺序（schema 保证是数组）。 */
+const photoIds: string[] = Array.isArray(entry.data.photos) ? entry.data.photos : [];
+/** 张数唯一口径 = photos.length（G1：不再有「缺 sidecar 数文件」的兜底）。 */
+const frameCount = resolveSeriesCount({ photos: photoIds });
 
 /** 一帧的渲染 + 灯箱所需的一切（URL / 真宽高 / alt / exif / 索引）。 */
 interface FrameView {
-  index: number; // sidecar 顺序索引（= data-lightbox-index = frames 岛顺序）
+  index: number; // 照片流顺序索引（= data-lightbox-index = frames 岛顺序）
+  /** 照片 ID（池内文件名），封面命中按它比 */
+  id: string;
   src: string;
   thumb: string;
   width: number;
@@ -123,24 +109,44 @@ interface FrameView {
   exif: Exif;
 }
 
-const frames: FrameView[] = sidecar.map((e: PhotoEntry, i) => ({
-  index: i,
-  src: serveUrl(dir, e.file),
-  thumb: serveUrl(dir, e.thumb),
-  width: e.width,
-  height: e.height,
-  thumbWidth: e.thumbWidth,
-  thumbHeight: e.thumbHeight,
-  alt: `${entry.data.title} · 第 ${i + 1} 帧`,
-  exif: e.exif,
-}));
+/**
+ * 照片流：严格按 photos[] 顺序逐张查池。
+ * 池里查不到的 ID → 构建期告警 + 跳过这张图（不伪造宽高、不占空帧）；
+ * 跳过后 index 重新连续编号，保证 data-lightbox-index 与 frames 岛一一对应。
+ */
+const frames: FrameView[] = [];
+for (const id of photoIds) {
+  const photo = findPoolPhoto(poolSidecar, id);
+  if (!photo) {
+    console.warn(
+      `[series] 系列「${slug}」的 photos 里写了「${id}」，但照片池 sidecar（pool/photos.meta.json）` +
+        ` 里没有这条记录：已跳过该帧（不伪造宽高）。请把这张图导入照片池：\`npm run import --pool\`。`,
+    );
+    continue;
+  }
+  const index = frames.length;
+  frames.push({
+    index,
+    id,
+    src: serveUrl(POOL_DIR, photo.file),
+    thumb: serveUrl(POOL_DIR, photo.thumb),
+    width: photo.width,
+    height: photo.height,
+    thumbWidth: photo.thumbWidth,
+    thumbHeight: photo.thumbHeight,
+    alt: `${entry.data.title} · 第 ${index + 1} 帧`,
+    exif: photo.exif,
+  });
+}
 
 const total = frames.length;
 
-/* ---- 封面满版跨页：优先 frontmatter.cover 命中的帧，否则首帧；命中的那张从照片流剔除，
- *      使每帧恰好出现一次、data-lightbox-index 无重复。frames 岛仍含全部帧。---- */
-let heroIndex = frames.findIndex((f) => sidecar[f.index]?.file === entry.data.cover);
-if (heroIndex < 0) heroIndex = 0;
+/* ---- 封面满版跨页（A5 三级回退）：cover（非空）→ photos[0] → 两者皆空则整块不渲染。
+ *      cover 指定的那张从照片流剔除，使每帧恰好出现一次、data-lightbox-index 无重复；
+ *      frames 岛仍含全部帧。---- */
+const coverId = resolveCoverPhotoId(entry.data.cover, photoIds);
+let heroIndex = coverId ? frames.findIndex((f) => f.id === coverId) : -1;
+if (heroIndex < 0) heroIndex = 0; // cover 指向池里没有的图 / 空 → 退回首帧
 const hero = total > 0 ? frames[heroIndex] : null;
 const flow = frames.filter((f) => f.index !== heroIndex); // 其余帧，保持顺序
 
@@ -235,7 +241,7 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     ) : null
   }
 
-  <!-- ④ 照片流：按 sidecar 顺序（帧号连续，灯箱接线）+ frames JSON 岛 + >30 IO 追加
+  <!-- ④ 照片流：按 photos[] 顺序（帧号连续，灯箱接线）+ frames JSON 岛 + >30 IO 追加
        内嵌图版走 800px 缩略版（显示宽仅 ~531px，省 ~7-10× 传输；封面满版跨页仍用 2560 大图）；
        点开灯箱取 frames 岛里的 display 大图，全屏清晰度不变。 -->
   {
@@ -273,7 +279,7 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
           </div>
 
           {
-            /* 灯箱帧序列岛：始终含全部帧（不受分批影响），按 sidecar 顺序。 */
+            /* 灯箱帧序列岛：始终含全部帧（不受分批影响），按 photos[] 顺序。 */
             <script
               type="application/json"
               class="lightbox-frames"

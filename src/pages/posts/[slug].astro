@@ -40,7 +40,13 @@ import ExifCard from '../../components/ExifCard.astro';
 import Lightbox from '../../components/Lightbox.astro';
 import type { CollectionEntry } from 'astro:content';
 import { getPublishedPosts } from '../../utils/collections';
-import { contentImageUrl, entryResourceDir, resolveContentImage } from '../../utils/contentImages';
+import {
+  POOL_DIR,
+  contentImageUrl,
+  entryResourceDir,
+  resolveContentImage,
+} from '../../utils/contentImages';
+import { poolSidecar } from '../../utils/photoPool';
 import {
   buildIllustrationFramesJson,
   processPostIllustrations,
@@ -48,21 +54,11 @@ import {
 } from '../../utils/postIllustrations';
 import { planPhotoFlow } from '../../utils/paginateFlow';
 import { hasNoteContent } from '../../utils/noteBody';
-import type { PhotoSidecar } from '../../types/photoSidecar';
 
-/* ---- sidecar：目录 -> photos.meta.json 数组（与列表页 / 首页同法）---- */
-const sidecarModules = import.meta.glob('/src/content/**/photos.meta.json', {
-  eager: true,
-  import: 'default',
-}) as Record<string, PhotoSidecar>;
+/* ---- 照片池化（admin-v2.md D2b）：正文插图问的是**全局** sidecar
+ *      （src/content/pool/photos.meta.json），不再有「每篇一份 photos.meta.json」。 ---- */
 
-const sidecarByDir: Record<string, PhotoSidecar> = {};
-for (const [key, mod] of Object.entries(sidecarModules)) {
-  const dir = key.replace(/^\/src\/content\//, '').replace(/\/photos\.meta\.json$/, '');
-  sidecarByDir[dir] = mod;
-}
-
-function warnMissingSidecar(message: string): void {
+function warnIllustration(message: string): void {
   console.warn(message);
 }
 
@@ -108,24 +104,23 @@ const { entry, renderedHtml = '' } = Astro.props as {
 const dir = entryResourceDir('posts', entry.id);
 const slug = dir.split('/').pop() ?? entry.id;
 const gallery = `post-${slug}`;
-const sidecar: PhotoSidecar = sidecarByDir[dir] ?? [];
 const title = entry.data.title;
 
-/* ---- 正文：Astro 构建期渲染好的 HTML 串（本地图片此时仍是 __ASTRO_IMAGE_ 占位）
-       由 getStaticPaths 显式取 entry.rendered.html 并以字符串 prop 传进来。---- */
+/* ---- 正文：Astro 构建期渲染好的 HTML 串（正文插图是原样的 `photo:<ID>` 引用；
+ *      若还用了相对路径写法，Astro 会把它改写成 __ASTRO_IMAGE_ 占位，管线两形都认）。---- */
 
 /**
- * 相对路径 -> 展示图可服务 URL（边界③唯一出口）。
+ * 照片 ID / 相对路径 -> 展示图可服务 URL（边界③唯一出口，池作 entryDir）。
  * 管线契约：产物不在构建图里就返回空串（contentImageUrl 本身会退回相对路径，故先问表）。
  */
 const resolveUrl = (rel: string): string =>
-  resolveContentImage(dir, rel) === undefined ? '' : contentImageUrl(dir, rel);
+  resolveContentImage(POOL_DIR, rel) === undefined ? '' : contentImageUrl(POOL_DIR, rel);
 
 const body = processPostIllustrations({
   html: renderedHtml,
-  sidecar,
+  sidecar: poolSidecar,
   resolveUrl,
-  onWarn: warnMissingSidecar,
+  onWarn: warnIllustration,
 });
 
 /** 图版所需的 alt：正文没写就按题名 + 帧号兜底，不留空描述。 */
@@ -225,7 +220,7 @@ const hasBody = hasNoteContent(entry.body) || body.plateCount > 0;
           </p>
           <p>{`摄于 ${dateText}`}</p>
           {tags.length > 0 ? <p>{`标签 · ${tags.join(' / ')}`}</p> : null}
-          <p>{`插图 ${total} 帧 · 出自 ${slug}/photos`}</p>
+          <p>{`插图 ${total} 帧 · 出自照片池`}</p>
           <p>
             <a href="/posts/">← 回随笔目次</a>
           </p>
