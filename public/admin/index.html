@@ -2,39 +2,34 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- 后台不给搜索引擎收录（decap-cms 任务 1 的口径，换引擎后不变）。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="googlebot" content="noindex, nofollow" />
-    <title>内容后台 · 柚 Justyou</title>
+    <title>内容后台 · 柚</title>
+    <!--
+      自建单页后台（admin-v2.md E 组）：原生 JS + Vditor（CDN），无构建步骤、无框架、无配置文件。
+      · 本页随站点部署在 /admin/；令牌只进浏览器 localStorage（见 js/storage.js）。
+      · 图片预览走仓库原始地址（src/content 下的图片构建后不由站点按原路径服务）。
+      · 唯一第三方库是 Vditor，且只在编辑页按需从 CDN 拉取；拉不到就退回纯文本编辑，页面照常可用。
+    -->
+    <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
-    <!--
-      Sveltia CMS（后台引擎）。为什么换掉 Decap：Decap 3.x 的 GitHub 后端只会走 Netlify 的
-      OAuth 代理（api.netlify.com/auth），本站在 Cloudflare Pages 上，代理回 404，登录必挂
-      （auth_type/client_id 会被整个忽略——已读源码 + 无头浏览器实测确认）。
-      Sveltia 读同一份 config.yml / 同一套内容仓库，支持粘贴 GitHub Access Token 直登，
-      不需要任何代理或自建服务器。
+    <header class="top">
+      <a class="brand" href="/" title="回前台">柚 <span>· 内容后台</span></a>
+      <nav class="nav" id="nav" data-testid="nav" hidden>
+        <button type="button" data-nav="photos" data-testid="nav-photos">照片池</button>
+        <button type="button" data-nav="series" data-testid="nav-series">系列</button>
+        <button type="button" data-nav="posts" data-testid="nav-posts">随笔</button>
+      </nav>
+      <button type="button" class="ghost" id="logout" data-testid="logout" hidden>退出</button>
+    </header>
 
-      三个刻意的写法（都出自 Sveltia 官方 Start Guide，别顺手"优化"）：
-        1) 不加 type="module"：当前发行版不是 ES module，加了会出未定义行为；
-        2) 不加 <link rel="stylesheet">：样式全部打进 JS，没有独立 CSS 文件；
-        3) 版本锁死 0.221.0（不用 latest）：升级 = 手动改这行 + 线上登录验一次。
+    <main id="view" class="view"></main>
 
-      加载后自动初始化，配置从本目录的 config.yml 读；不要在这里再调任何 init API。
-    -->
-    <script src="https://cdn.jsdelivr.net/npm/@sveltia/cms@0.221.0/dist/sveltia-cms.js"></script>
-    <noscript>内容后台需要 JavaScript：请在支持 JS 的浏览器里打开 /admin/。</noscript>
+    <footer class="foot">
+      <span>仓库 Elaina0510/grphyblog · 分支 main · 令牌只存在本机浏览器</span>
+    </footer>
 
-    <!--
-      🖼 预览基准的同步约定（原 decap-cms 任务 8 的口径）：
-      前台图片 URL 规则唯一出口是 src/utils/imageUrl.ts；Sveltia 的编辑器预览由引擎自己
-      按 config.yml 的 public_folder 拼 URL（不再需要我们手写镜像实现——Decap 时代那份
-      resolvePreviewUrl()/registerPreviewTemplate 已随引擎一起退役）。
-      ➜ 改 imageUrl.ts 的基准规则（含 PUBLIC_IMAGE_BASE 口径）时，必须同步改 config.yml
-        的 public_folder；imageUrl.ts 头部有互指注释。
-      注意：封面字段是 string（相对条目路径），预览多半显示不出来，线上同理——
-      这是「照片只能出自 npm run import、后台只管文字」的既定取舍，不是故障。
-    -->
+    <script type="module" src="./js/app.js"></script>
   </body>
 </html>

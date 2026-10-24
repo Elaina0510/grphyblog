@@ -1,0 +1,552 @@
+/* =============================================================================
+ * app.css —— 内容后台的样式（独立静态页，构建不处理 public/ 下的 CSS import）
+ *
+ * 色系仍锁死四色：纸白 / 墨 / 朱砂 / 夜底（与 src/styles/global.css 同一套值）。
+ * 后台不需要前台的字体与版式，只借用这套色与一个等宽字体做「工具感」。
+ * ========================================================================== */
+
+:root {
+  --paper: #f2f1ec;
+  --paper-deep: #e8e6dd;
+  --rule: #d5d2c8;
+  --ink: #26241f;
+  --ink-soft: #5b574e;
+  --ink-mute: #85806f;
+  --cinnabar: #a03b28;
+  --cinnabar-deep: #7e2e1f;
+  --night: #191816;
+
+  --font-sans: 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Courier Prime', 'Courier New', ui-monospace, Consolas, monospace;
+
+  --gap-1: 4px;
+  --gap-2: 8px;
+  --gap-3: 12px;
+  --gap-4: 16px;
+  --gap-5: 24px;
+  --gap-6: 40px;
+  --radius: 2px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* hidden 属性必须真的隐藏：.nav 之类设了 display:flex，会盖掉 UA 的 [hidden] 规则 */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--ink);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ── 顶栏 ─────────────────────────────────────────────────────────────── */
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-5);
+  padding: var(--gap-3) var(--gap-5);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand span {
+  color: var(--ink-soft);
+}
+
+.nav {
+  display: flex;
+  gap: var(--gap-2);
+  flex: 1;
+}
+
+.nav button {
+  border: 1px solid transparent;
+  background: none;
+  padding: var(--gap-1) var(--gap-3);
+  color: var(--ink-soft);
+  border-radius: var(--radius);
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.nav button:hover {
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+.nav button[aria-current='true'] {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.ghost {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+  padding: var(--gap-1) var(--gap-3);
+  border-radius: var(--radius);
+}
+
+.ghost:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* ── 主区 ─────────────────────────────────────────────────────────────── */
+.view {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--gap-5);
+}
+
+.foot {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--gap-4) var(--gap-5) var(--gap-6);
+  color: var(--ink-mute);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border-top: 1px solid var(--rule);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin: 0 0 var(--gap-3);
+}
+
+h2 {
+  font-size: 20px;
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* ── 登录 ─────────────────────────────────────────────────────────────── */
+.login {
+  max-width: 520px;
+  margin: 8vh auto;
+}
+
+.login ol {
+  padding-left: var(--gap-5);
+  color: var(--ink-soft);
+}
+
+.login .row {
+  display: flex;
+  gap: var(--gap-2);
+  margin-top: var(--gap-4);
+}
+
+input[type='password'],
+input[type='text'],
+input[type='date'],
+input[type='number'],
+textarea,
+select {
+  width: 100%;
+  padding: var(--gap-2) var(--gap-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+input[type='password'] {
+  font-family: var(--font-mono);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 1px;
+}
+
+.btn {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: var(--gap-2) var(--gap-5);
+  border-radius: var(--radius);
+  transition: background 0.2s var(--ease);
+}
+
+.btn:hover {
+  background: var(--cinnabar);
+  border-color: var(--cinnabar);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.small {
+  padding: var(--gap-1) var(--gap-3);
+  font-size: 13px;
+}
+
+.btn.plain {
+  background: none;
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+.btn.plain:hover {
+  border-color: var(--ink);
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+/* ── 工具条 ───────────────────────────────────────────────────────────── */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-3);
+  padding: var(--gap-3) 0 var(--gap-4);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--gap-4);
+}
+
+.bar .spacer {
+  flex: 1;
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+code,
+.cmd {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  padding: 1px var(--gap-2);
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+/* ── 照片网格 ─────────────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--gap-3);
+}
+
+.tile {
+  margin: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper-deep);
+  overflow: hidden;
+  position: relative;
+}
+
+.tile .shot {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  background: var(--night);
+}
+
+.tile figcaption {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: var(--gap-1) var(--gap-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  overflow: hidden;
+}
+
+.tile .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  color: var(--cinnabar);
+  border: 1px solid var(--cinnabar);
+  border-radius: var(--radius);
+  padding: 0 var(--gap-1);
+  font-size: 10px;
+}
+
+.tile .broken {
+  display: grid;
+  place-items: center;
+  height: 150px;
+  color: var(--paper-dim, #b9b7ae);
+  background: var(--night);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  padding: var(--gap-2);
+}
+
+/* 勾选态 */
+.tile.pickable {
+  cursor: pointer;
+}
+
+.tile.picked {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+/* 勾选控件：一个真的复选框 + 顺序号（顺序 = photos 数组下标） */
+.tile .pick {
+  position: absolute;
+  top: var(--gap-1);
+  right: var(--gap-1);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 4px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.tile .pick-box {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.tile .pick-no {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.tile.picked .pick {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.tile.picked .pick-box {
+  accent-color: var(--paper);
+}
+
+.tile.picked .pick-no {
+  color: var(--paper);
+}
+
+/* ── 编辑页 ───────────────────────────────────────────────────────────── */
+.edit .cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--gap-5);
+  align-items: start;
+}
+
+.field {
+  margin-bottom: var(--gap-3);
+}
+
+.field > label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: var(--gap-1);
+}
+
+.field .tip {
+  color: var(--ink-mute);
+  font-size: 12px;
+  margin-top: var(--gap-1);
+}
+
+.field.inline {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+}
+
+.field.inline > label {
+  margin: 0;
+}
+
+.order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-2);
+  min-height: 84px;
+  padding: var(--gap-2);
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper-deep);
+}
+
+.order:empty::before {
+  content: '还没有勾选照片：在下方网格里点选，勾中的会按顺序出现在这里';
+  color: var(--ink-mute);
+  font-size: 12px;
+  padding: var(--gap-3);
+}
+
+.order-item {
+  position: relative;
+  width: 84px;
+  cursor: grab;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.order-item.dragging {
+  opacity: 0.4;
+}
+
+.order-item img {
+  display: block;
+  width: 100%;
+  height: 60px;
+  object-fit: cover;
+  background: var(--night);
+  pointer-events: none;
+}
+
+.order-item .no {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+  color: var(--ink-soft);
+  padding: 1px 0;
+  pointer-events: none;
+}
+
+.order-item .drop-before::before,
+.order-item.over::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--cinnabar);
+}
+
+.status {
+  min-height: 22px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.status.error {
+  color: var(--cinnabar);
+}
+
+.status.ok {
+  color: var(--ink);
+}
+
+/* Vditor 容器：CDN 拉不到时退化成 textarea，样式保持一致 */
+.editor textarea {
+  min-height: 340px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.editor .fallback-note {
+  color: var(--ink-mute);
+  font-size: 12px;
+  margin-bottom: var(--gap-1);
+}
+
+/* ── 条目列表 ─────────────────────────────────────────────────────────── */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.list li {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+  padding: var(--gap-3) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.list .t {
+  font-weight: 500;
+}
+
+.list .meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.list .spacer {
+  flex: 1;
+}
+
+.empty {
+  padding: var(--gap-5) 0;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 900px) {
+  .edit .cols {
+    grid-template-columns: 1fr;
+  }
+}
