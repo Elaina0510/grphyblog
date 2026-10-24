@@ -1,11 +1,87 @@
 ---
 title: 街头随拍
 date: 2026-09-26
-cover: photos/P1100451.webp
+cover: P1100451.webp
 tags:
   - 街拍
 order: 4
 draft: false
+photos:
+  - P1100451.webp
+  - P1100454.webp
+  - P1100457.webp
+  - P1100458.webp
+  - P1100462.webp
+  - P1100466.webp
+  - P1100473.webp
+  - P1100475.webp
+  - P1100497.webp
+  - P1100509.webp
+  - P1100531.webp
+  - P1100565.webp
+  - P1100593.webp
+  - P1100611.webp
+  - P1180161.webp
+  - P1200967.webp
+  - P1200978.webp
+  - P1200980.webp
+  - P1200986.webp
+  - P1200989.webp
+  - P1200994.webp
+  - P1210206.webp
+  - P1210264.webp
+  - P1210265.webp
+  - P1210268.webp
+  - P1210271.webp
+  - P1210273.webp
+  - P1210282.webp
+  - P1210293.webp
+  - P1210306.webp
+  - P1210323.webp
+  - P1210333.webp
+  - P1210347.webp
+  - P1210349.webp
+  - P1210417.webp
+  - P1210439.webp
+  - P1230380-2.webp
+  - P1230380.webp
+  - P1230388.webp
+  - P1230402.webp
+  - P1230441.webp
+  - P1230450.webp
+  - P1230455.webp
+  - P1230462.webp
+  - P1230464.webp
+  - P1230508.webp
+  - P1230513.webp
+  - P1230540.webp
+  - P1230552.webp
+  - P1230592.webp
+  - P1230597.webp
+  - P1230609.webp
+  - P1230612.webp
+  - P1230616.webp
+  - P1230626.webp
+  - P1230628.webp
+  - P1230635.webp
+  - P1230638.webp
+  - P1230645.webp
+  - P1230665.webp
+  - P1230681.webp
+  - P1230700.webp
+  - P1230715.webp
+  - P1230725.webp
+  - P1230727.webp
+  - P1230731.webp
+  - P1230736.webp
+  - P1230752.webp
+  - P1230789.webp
+  - P1230857.webp
+  - P1230861.webp
+  - P1230869.webp
+  - P1230876.webp
+  - P1230888.webp
+  - P1250787.webp
 ---
 
 <!-- 由 npm run import 新建（系列标识 street-notes，2026-09-26）。照片与 photos.meta.json 已入库；手记写完、本地预览确认后，把 draft 改成 false 再发布。 -->

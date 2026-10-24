@@ -1,9 +1,10 @@
 ---
 title: 巷子里的光比街上早
 date: 2026-07-02
-cover: photos/tbd.webp
+cover: ''
 tags: [街拍, 光影]
 draft: false
+photos: []
 ---
 
 纯文字的一篇，用来看列表的时间倒序：它是目前公开随笔里日期最早的一册，

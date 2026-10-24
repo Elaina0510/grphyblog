@@ -1,13 +1,16 @@
 ---
 title: 夜光 · 城市666
 date: 2026-09-20
-cover: photos/night-02.webp
+cover: night-02.webp
 tags:
   - 城市
   - 夜景
   - 风光
 order: 3
 draft: false
+photos:
+  - night-01.webp
+  - night-02.webp
 ---
 
 第一次把「城市入夜」当作一个系列来拍。灯亮起来的那一刻，白天的秩序被重新打乱，

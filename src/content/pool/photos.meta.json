@@ -1,5 +1,124 @@
 [
   {
+    "file": "photos/night-01.webp",
+    "thumb": "photos/night-01.thumb.webp",
+    "width": 2560,
+    "height": 1707,
+    "thumbWidth": 800,
+    "thumbHeight": 533,
+    "exif": {
+      "camera": "FUJIFILM X-T5",
+      "lens": "XF 56mm F1.2 R WR",
+      "focalLength": 56,
+      "aperture": 1.2,
+      "shutter": "1/125",
+      "iso": 800,
+      "dateTaken": "2026-09-20"
+    }
+  },
+  {
+    "file": "photos/night-02.webp",
+    "thumb": "photos/night-02.thumb.webp",
+    "width": 2560,
+    "height": 1707,
+    "thumbWidth": 800,
+    "thumbHeight": 533,
+    "exif": {
+      "camera": null,
+      "lens": null,
+      "focalLength": null,
+      "aperture": 2,
+      "shutter": null,
+      "iso": null,
+      "dateTaken": "2026-09-20"
+    }
+  },
+  {
+    "file": "photos/P1230857.webp",
+    "thumb": "photos/P1230857.thumb.webp",
+    "width": 1922,
+    "height": 2560,
+    "thumbWidth": 601,
+    "thumbHeight": 800,
+    "exif": {
+      "camera": "Panasonic DMC-GX85",
+      "lens": "LUMIX G 14/F2.5",
+      "focalLength": 14,
+      "aperture": 5,
+      "shutter": "1/125",
+      "iso": 200,
+      "dateTaken": "2026-08-10"
+    }
+  },
+  {
+    "file": "photos/P1230861.webp",
+    "thumb": "photos/P1230861.thumb.webp",
+    "width": 2560,
+    "height": 1922,
+    "thumbWidth": 800,
+    "thumbHeight": 601,
+    "exif": {
+      "camera": "Panasonic DMC-GX85",
+      "lens": "LUMIX G 14/F2.5",
+      "focalLength": 14,
+      "aperture": 5,
+      "shutter": "1/125",
+      "iso": 200,
+      "dateTaken": "2026-08-10"
+    }
+  },
+  {
+    "file": "photos/P1230869.webp",
+    "thumb": "photos/P1230869.thumb.webp",
+    "width": 2560,
+    "height": 1760,
+    "thumbWidth": 800,
+    "thumbHeight": 550,
+    "exif": {
+      "camera": "Panasonic DMC-GX85",
+      "lens": "LUMIX G 14/F2.5",
+      "focalLength": 14,
+      "aperture": 5,
+      "shutter": "1/200",
+      "iso": 200,
+      "dateTaken": "2026-08-10"
+    }
+  },
+  {
+    "file": "photos/P1230876.webp",
+    "thumb": "photos/P1230876.thumb.webp",
+    "width": 2560,
+    "height": 1922,
+    "thumbWidth": 800,
+    "thumbHeight": 601,
+    "exif": {
+      "camera": "Panasonic DMC-GX85",
+      "lens": "LUMIX G 14/F2.5",
+      "focalLength": 14,
+      "aperture": 5,
+      "shutter": "1/100",
+      "iso": 200,
+      "dateTaken": "2026-08-10"
+    }
+  },
+  {
+    "file": "photos/P1230888.webp",
+    "thumb": "photos/P1230888.thumb.webp",
+    "width": 2560,
+    "height": 1922,
+    "thumbWidth": 800,
+    "thumbHeight": 601,
+    "exif": {
+      "camera": "Panasonic DMC-GX85",
+      "lens": "LUMIX G 14/F2.5",
+      "focalLength": 14,
+      "aperture": 5,
+      "shutter": "1/800",
+      "iso": 200,
+      "dateTaken": "2026-08-10"
+    }
+  },
+  {
     "file": "photos/P1100451.webp",
     "thumb": "photos/P1100451.thumb.webp",
     "width": 2560,
@@ -1173,91 +1292,6 @@
     }
   },
   {
-    "file": "photos/P1230857.webp",
-    "thumb": "photos/P1230857.thumb.webp",
-    "width": 1922,
-    "height": 2560,
-    "thumbWidth": 601,
-    "thumbHeight": 800,
-    "exif": {
-      "camera": "Panasonic DMC-GX85",
-      "lens": "LUMIX G 14/F2.5",
-      "focalLength": 14,
-      "aperture": 5,
-      "shutter": "1/125",
-      "iso": 200,
-      "dateTaken": "2026-08-10"
-    }
-  },
-  {
-    "file": "photos/P1230861.webp",
-    "thumb": "photos/P1230861.thumb.webp",
-    "width": 2560,
-    "height": 1922,
-    "thumbWidth": 800,
-    "thumbHeight": 601,
-    "exif": {
-      "camera": "Panasonic DMC-GX85",
-      "lens": "LUMIX G 14/F2.5",
-      "focalLength": 14,
-      "aperture": 5,
-      "shutter": "1/125",
-      "iso": 200,
-      "dateTaken": "2026-08-10"
-    }
-  },
-  {
-    "file": "photos/P1230869.webp",
-    "thumb": "photos/P1230869.thumb.webp",
-    "width": 2560,
-    "height": 1760,
-    "thumbWidth": 800,
-    "thumbHeight": 550,
-    "exif": {
-      "camera": "Panasonic DMC-GX85",
-      "lens": "LUMIX G 14/F2.5",
-      "focalLength": 14,
-      "aperture": 5,
-      "shutter": "1/200",
-      "iso": 200,
-      "dateTaken": "2026-08-10"
-    }
-  },
-  {
-    "file": "photos/P1230876.webp",
-    "thumb": "photos/P1230876.thumb.webp",
-    "width": 2560,
-    "height": 1922,
-    "thumbWidth": 800,
-    "thumbHeight": 601,
-    "exif": {
-      "camera": "Panasonic DMC-GX85",
-      "lens": "LUMIX G 14/F2.5",
-      "focalLength": 14,
-      "aperture": 5,
-      "shutter": "1/100",
-      "iso": 200,
-      "dateTaken": "2026-08-10"
-    }
-  },
-  {
-    "file": "photos/P1230888.webp",
-    "thumb": "photos/P1230888.thumb.webp",
-    "width": 2560,
-    "height": 1922,
-    "thumbWidth": 800,
-    "thumbHeight": 601,
-    "exif": {
-      "camera": "Panasonic DMC-GX85",
-      "lens": "LUMIX G 14/F2.5",
-      "focalLength": 14,
-      "aperture": 5,
-      "shutter": "1/800",
-      "iso": 200,
-      "dateTaken": "2026-08-10"
-    }
-  },
-  {
     "file": "photos/P1250787.webp",
     "thumb": "photos/P1250787.thumb.webp",
     "width": 1922,
@@ -1272,6 +1306,23 @@
       "shutter": "4s",
       "iso": 200,
       "dateTaken": "2026-09-10"
+    }
+  },
+  {
+    "file": "photos/dawn-01.webp",
+    "thumb": "photos/dawn-01.thumb.webp",
+    "width": 2560,
+    "height": 1707,
+    "thumbWidth": 800,
+    "thumbHeight": 533,
+    "exif": {
+      "camera": "Sony A7 IV",
+      "lens": "FE 85mm F1.8",
+      "focalLength": 85,
+      "aperture": 1.8,
+      "shutter": "1/200",
+      "iso": 100,
+      "dateTaken": "2026-09-21"
     }
   }
 ]
