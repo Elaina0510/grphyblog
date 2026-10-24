@@ -591,6 +591,9 @@ function renderEdit() {
       el('span', { class: 'spacer' }),
       backButton,
       saveButton,
+      // 保存反馈必须贴着按钮：表单有字段 + 78 张照片网格 + 正文编辑器，
+      // 若把状态放在表单末尾，点顶部的按钮时提示在几屏之外，等于没有反馈。
+      status,
     ]),
     el('section', { class: 'edit', 'data-testid': 'edit-view', 'data-collection': editing.collection }, [
       el('h3', {}, ['字段']),
@@ -601,7 +604,6 @@ function renderEdit() {
       picker,
       el('h3', {}, ['正文']),
       editorHost,
-      status,
     ]),
   );
 
@@ -787,6 +789,18 @@ async function saveEditing(statusEl) {
   const editing = state.editing;
   if (!editing || !state.client) return;
   const dom = editing.dom;
+  const saveBtn = /** @type {HTMLButtonElement|null} */ (
+    document.querySelector('[data-testid="save"]')
+  );
+  const idleLabel = editing.isNew ? '新建并保存' : '保存';
+
+  /** 保存期间禁用按钮并改文案：点击后立刻有可见变化，也顺带防双击重复提交。 */
+  const setBusy = (busy) => {
+    if (!saveBtn) return;
+    saveBtn.disabled = busy;
+    saveBtn.textContent = busy ? '保存中…' : idleLabel;
+  };
+
   readFields(editing, dom);
   const poolIds = api.poolIds(state.pool);
   const errors = validateFields(editing.fields, { collection: editing.collection, poolIds });
@@ -813,6 +827,7 @@ async function saveEditing(statusEl) {
 
   const body = editing.editor ? editing.editor.getValue() : editing.body;
   editing.body = body;
+  setBusy(true);
   setStatus(statusEl, '保存中…');
   try {
     const result = await api.saveEntry(state.client, {
@@ -836,6 +851,8 @@ async function saveEditing(statusEl) {
     setStatus(statusEl, `已保存：${result.path}（commit ${String(result.commit).slice(0, 7)}）`, 'ok');
   } catch (error) {
     setStatus(statusEl, describeError(error), 'error');
+  } finally {
+    setBusy(false);
   }
 }
 

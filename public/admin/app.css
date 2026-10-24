@@ -254,6 +254,13 @@ select:focus {
   flex: 1;
 }
 
+/* 保存反馈独占顶栏的一行：它必须和保存按钮同屏，否则表单长到几屏后用户以为没反应。
+   顶栏 flex-wrap: wrap，flex-basis: 100% 会让它另起一行而不是挤在按钮旁边。 */
+.bar .status {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .hint {
   color: var(--ink-soft);
   font-size: 13px;
