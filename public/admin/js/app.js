@@ -38,7 +38,7 @@ import {
 import { planCompression } from './imageplan.js';
 import { decodeImageFile, encodeScaled } from './imaging.js';
 import { mountEditor } from './editor.js';
-import { isValidSlug, postSlugOf, validateFields } from './markdown.js';
+import { isValidSlug, postSlugOf, slugFromTitle, validateFields } from './markdown.js';
 
 // -----------------------------------------------------------------------------
 // 状态
@@ -546,13 +546,19 @@ function renderEdit() {
     placeholder: '标题',
   });
   const date = el('input', { type: 'date', 'data-field': 'date', value: editing.fields.date });
-  const slug = el('input', {
-    type: 'text',
-    'data-testid': 'slug',
-    value: editing.slug,
-    placeholder: isSeries ? '例如 city-lights' : '例如 evening-stroll',
-  });
-  if (!editing.isNew) slug.disabled = true;
+  // 新建时边打标题边显示将来落在哪个路径 —— 用户能提前看到 /series/夜光城市/ 这种 URL，
+  // 觉得不合适就改标题，而不是存完才发现。
+  if (editing.isNew) {
+    title.addEventListener('input', () => {
+      const preview = slugFromTitle(title.value);
+      const pathEl = document.querySelector('[data-testid="entry-path"]');
+      if (!pathEl) return;
+      pathEl.textContent = preview
+        ? api.newEntryPath(editing.collection, { slug: preview, date: date.value })
+        : '（标题里要有文字或数字，才能生成路径）';
+    });
+    date.addEventListener('change', () => title.dispatchEvent(new Event('input')));
+  }
   const tags = el('input', {
     type: 'text',
     'data-field': 'tags',
@@ -592,17 +598,8 @@ function renderEdit() {
   const fieldsBox = el('div', {}, [
     field('标题', title),
     field('日期', date),
-    // 标识只在新建时有用（决定目录名 / 文件名）；已存在的条目改标识等于换目录，
-    // 后台不支持，所以整行不渲染，而不是渲染一个禁用输入框占地方。
-    ...(editing.isNew
-      ? [
-          field(
-            isSeries ? '系列标识（目录名，保存后不改）' : '随笔标识（文件名里日期之后那段）',
-            slug,
-            '只用小写字母、数字与连字符。',
-          ),
-        ]
-      : []),
+    // 标识行整块去掉了：新建时由标题自动派生（见 slugFromTitle），
+    // 已存在的条目改标识 = 换目录，本来就不支持。用户不用再想英文名。
     field('标签', tags),
     ...(orderInput ? [field('排序权重（越小越靠前）', orderInput)] : []),
     field('封面', cover, '从已勾选的照片里挑；留空 = 前台用第一张。'),
@@ -695,7 +692,7 @@ function renderEdit() {
   }
   draft.addEventListener('change', () => readFields(editing, { title, date, tags, orderInput, draft, slug }));
 
-  editing.dom = { title, date, tags, orderInput, draft, slug, cover, picker, order, editorHost, status };
+  editing.dom = { title, date, tags, orderInput, draft, cover, picker, order, editorHost, status };
   buildPicker(picker);
   refreshPhotoUI();
   // 封面是缩略图按钮组（不是 select），选中即写回 fields，无需 change 监听。
@@ -723,8 +720,9 @@ function readFields(editing, dom) {
     .filter(Boolean);
   if (dom.orderInput) editing.fields.order = Number(dom.orderInput.value);
   editing.fields.draft = dom.draft.checked;
-  // 已存在的条目不渲染标识行（改标识 = 换目录，不支持），此时保留原值不动。
-  if (dom.slug) editing.slug = dom.slug.value.trim();
+  // 新建条目：标识由标题派生，用户不用管。已存在的条目保留原 path 里的标识
+  // （改标题不该偷偷把目录改了，那会让旧链接 404）。
+  if (editing.isNew) editing.slug = slugFromTitle(editing.fields.title);
 }
 
 /** 勾选网格：池里每张一张小图 + 一个复选框；点小图或复选框都算勾/取消。 */
@@ -912,7 +910,9 @@ async function saveEditing(statusEl) {
   let path = editing.path;
   if (editing.isNew) {
     if (!isValidSlug(editing.slug)) {
-      errors.push(editing.collection === 'series' ? '系列标识只能用小写字母、数字与连字符' : '随笔标识只能用小写字母、数字与连字符');
+      errors.push(
+        '标题里没有能用作路径的文字或数字（纯标点？），给标题加点内容再保存',
+      );
     } else {
       path = api.newEntryPath(editing.collection, { slug: editing.slug, date: editing.fields.date });
       const existing = state.entries[editing.collection] ?? [];
@@ -949,8 +949,6 @@ async function saveEditing(statusEl) {
     editing.unknownKeys = [];
     const pathEl = document.querySelector('[data-testid="entry-path"]');
     if (pathEl) pathEl.textContent = result.path;
-    const slugInput = document.querySelector('[data-testid="slug"]');
-    if (slugInput) slugInput.disabled = true;
     state.entries[editing.collection] = null;
     setStatus(statusEl, `已保存：${result.path}（commit ${String(result.commit).slice(0, 7)}）`, 'ok');
   } catch (error) {

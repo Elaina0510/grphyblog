@@ -62,5 +62,11 @@ export const VEDITOR = Object.freeze({
 /** 直传文件名基（不加扩展名）的合法形状：小写字母数字与连字符，避免 URL 里出现怪字符。 */
 export const PHOTO_BASENAME_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
 
-/** 系列标识（= 目录名）的合法形状。 */
-export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/**
+ * 条目标识（目录名 / 文件名尾段）的合法形态。
+ *
+ * 允许任意语言的字母与数字 + 连字符，**不允许**点、斜杠、空格、控制字符 ——
+ * 那些是路径注入与跨平台文件名的雷区（`..`、`a/b`、尾随空格）。
+ * 中文标题能直接用作标识（Astro 会生成 /series/夜光城市/，浏览器自动编码）。
+ */
+export const SLUG_PATTERN = /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u;

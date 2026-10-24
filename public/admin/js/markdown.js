@@ -195,7 +195,28 @@ export function postSlugOf(fileName) {
   return stem.replace(/^\d{4}-\d{2}-\d{2}-/, '');
 }
 
-/** 系列标识是否合法（目录名，只用小写字母数字与连字符）。 */
+/**
+ * 从标题派生条目标识（系列目录名 / 随笔文件名尾段）。
+ *
+ * 用户在后台不用再想标识：标题「夜光 · 城市」→「夜光-城市」，
+ * 「Morning Fog」→「morning-fog」。中文原样保留 —— Astro 能直接出
+ * /series/夜光城市/，浏览器会自动把地址栏编码成 %E5%A4%9C…，链接依然可点可分享。
+ *
+ * 规则：空格/下划线→连字符，标点丢掉（`·`、`.`、`,`、`!` 都不该进路径），
+ * 连续连字符合并，首尾连字符去掉。
+ * 返回空串表示标题里没有任何可用字符（纯标点），调用方应报错让用户改标题。
+ */
+export function slugFromTitle(title) {
+  return String(title ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^\p{L}\p{N}-]+/gu, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** 条目标识是否合法（目录名 / 文件名尾段，允许中文等任意文字的字母数字）。 */
 export function isValidSlug(slug) {
   return SLUG_PATTERN.test(String(slug ?? '').trim());
 }

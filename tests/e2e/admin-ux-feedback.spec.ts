@@ -87,8 +87,8 @@ test.describe('① 删除条目', () => {
     await page.click('[data-testid="new-entry"]');
     await expect(page.locator('[data-testid="edit-view"]')).toBeVisible();
     await expect(page.locator('[data-testid="delete"]')).toHaveCount(0);
-    // 新建时才需要标识
-    await expect(page.locator('[data-testid="slug"]')).toBeVisible();
+    // 新建也不给标识框了：路径由标题派生
+    await expect(page.locator('[data-testid="slug"]')).toHaveCount(0);
   });
 });
 
@@ -148,16 +148,32 @@ test.describe('③ 系列标识行', () => {
     await expect(page.locator('[data-testid="edit-view"]')).not.toContainText('系列标识');
   });
 
-  test('新建条目：标识行还在（要靠它生成目录名）', async ({ page }) => {
+  test('新建条目：不给标识框，中文标题直接派生目录名', async ({ page }) => {
     await page.click('[data-testid="nav-series"]');
     await page.click('[data-testid="new-entry"]');
-    await expect(page.locator('[data-testid="slug"]')).toBeVisible();
-    await page.fill('[data-testid="slug"]', 'brand-new');
-    await page.fill('[data-field="title"]', '新系列');
+    await expect(page.locator('[data-testid="slug"]')).toHaveCount(0);
+
+    // 边打标题边能看到将来的路径（用户能提前发现 URL 长什么样）
+    await page.fill('[data-field="title"]', '霓虹夜市');
+    await expect(page.locator('[data-testid="entry-path"]')).toHaveText(
+      'src/content/series/霓虹夜市/index.md',
+    );
+
     await page.fill('[data-field="date"]', '2026-10-24');
     await page.click('[data-testid="save"]');
     await expect(page.locator('[data-testid="status"]')).toContainText('已保存');
-    expect(mock.puts.some((row) => row.path === 'src/content/series/brand-new/index.md')).toBe(true);
+    expect(
+      mock.puts.some((row) => row.path === 'src/content/series/霓虹夜市/index.md'),
+    ).toBe(true);
+  });
+
+  test('标题里的标点不会进路径（防 a/b 这类路径注入）', async ({ page }) => {
+    await page.click('[data-testid="nav-series"]');
+    await page.click('[data-testid="new-entry"]');
+    await page.fill('[data-field="title"]', '夜光 · 城市 / 测试');
+    await expect(page.locator('[data-testid="entry-path"]')).toHaveText(
+      'src/content/series/夜光-城市-测试/index.md',
+    );
   });
 });
 

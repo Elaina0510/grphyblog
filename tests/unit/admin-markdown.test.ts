@@ -14,6 +14,7 @@ import {
   detectEol,
   illustrationSnippet,
   isValidSlug,
+  slugFromTitle,
   keysOf,
   normalizeFields,
   parseEntryMarkdown,
@@ -252,10 +253,25 @@ describe('路径 / 文件名 / 提交信息', () => {
     expect(postSlugOf('2026-09-21-morning-fog.md')).toBe('morning-fog');
   });
 
-  it('标识只收小写字母/数字/连字符', () => {
-    for (const ok of ['city-lights', 'a', 'abc123']) expect(isValidSlug(ok), ok).toBe(true);
-    for (const bad of ['City', '有中文', 'a b', '-a', 'a-', '', 'a_b'])
+  it('标识允许中文（标题直接派生），但绝不允许路径危险字符', () => {
+    // 允许：ASCII 与中文都行，连字符做分隔
+    for (const ok of ['city-lights', 'a', 'abc123', '夜光城市', '夜光-城市', '霓虹夜市20'])
+      expect(isValidSlug(ok), ok).toBe(true);
+
+    // 拒绝的重点不是「非 ASCII」，而是能拼出危险路径的东西
+    for (const bad of ['a b', '-a', 'a-', '', 'a_b', '..', '../etc', 'a/b', 'a.b', 'C:\\x', 'a\u0000b'])
       expect(isValidSlug(bad), bad).toBe(false);
+  });
+
+  it('标题派生标识：中文原样、空格转连字符、标点丢掉', () => {
+    expect(slugFromTitle('夜光 · 城市')).toBe('夜光-城市');
+    expect(slugFromTitle('Morning Fog')).toBe('morning-fog');
+    expect(slugFromTitle('夜光 · 城市666')).toBe('夜光-城市666');
+    expect(slugFromTitle('  我的 系列  ')).toBe('我的-系列');
+    expect(slugFromTitle('a/b 测试')).toBe('ab-测试'); // 斜杠必须消失，不能拼出 a/b
+    expect(slugFromTitle('霓虹夜市 2')).toBe('霓虹夜市-2');
+    // 纯标点派生不出标识，调用方据此报错
+    expect(slugFromTitle('！！！')).toBe('');
   });
 
   it('提交信息点明集合与标题', () => {

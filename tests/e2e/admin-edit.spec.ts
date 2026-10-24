@@ -243,9 +243,12 @@ test.describe('E4 编辑页', () => {
     await page.click('[data-testid="new-entry"]');
     await expect(page.locator('[data-testid="edit-view"]')).toBeVisible();
 
+    // 不填任何标识：路径由标题派生（中文标题原样进目录名）
     await page.fill('[data-field="title"]', '新建的系列');
     await page.fill('[data-field="date"]', '2026-10-24');
-    await page.fill('[data-testid="slug"]', 'e2e-new-series');
+    await expect(page.locator('[data-testid="entry-path"]')).toHaveText(
+      'src/content/series/新建的系列/index.md',
+    );
     await page.fill('[data-field="tags"]', '测试, 后台');
     await page.fill('[data-field="order"]', '9');
     await openPicker(page);
@@ -255,7 +258,7 @@ test.describe('E4 编辑页', () => {
     await page.click('[data-testid="save"]');
 
     await expect(page.locator('[data-testid="status"]')).toContainText('已保存');
-    const put = mock.puts.find((row) => row.path === 'src/content/series/e2e-new-series/index.md');
+    const put = mock.puts.find((row) => row.path === 'src/content/series/新建的系列/index.md');
     expect(put, '没有写到新系列的 index.md').toBeTruthy();
     expect(put!.body.sha, '新建不该带 sha（带了就是覆盖语义）').toBeUndefined();
     expect(put!.text).toContain('title: 新建的系列');
@@ -270,14 +273,14 @@ test.describe('E4 编辑页', () => {
     await page.click('[data-testid="new-entry"]');
     await expect(page.locator('[data-testid="edit-view"]')).toBeVisible();
 
-    await page.fill('[data-testid="slug"]', 'Bad Slug');
     await page.click('[data-testid="save"]');
     await expect(page.locator('[data-testid="status"]')).toContainText('标题不能为空');
     expect(mock.puts).toHaveLength(0);
 
-    await page.fill('[data-field="title"]', '有标题');
+    // 纯标点标题派生不出标识：报错且不发 PUT
+    await page.fill('[data-field="title"]', '！！！');
     await page.click('[data-testid="save"]');
-    await expect(page.locator('[data-testid="status"]')).toContainText('标识只能用小写字母');
+    await expect(page.locator('[data-testid="status"]')).toContainText('标题里没有能用作路径');
     expect(mock.puts).toHaveLength(0);
   });
 });
