@@ -36,6 +36,14 @@ function stripComments(source: string): string {
     .replace(/^\s*\/\/.*$/gm, '');
 }
 
+/**
+ * 媒体查询条件是「全站唯一断点 900px」的字面量容身处（DESIGN §4：CSS 条件里不能用 var()）。
+ * 与 posts-pages.test.ts 的 dropMediaConditions 同口径：比较前把条件体抹掉。
+ */
+function dropMediaConditions(code: string): string {
+  return code.replace(/@media[^{]*/g, '@media{');
+}
+
 /** 只取 <style> 块的内容（组件的结构 CSS）。 */
 function styleBlocks(source: string): string[] {
   return [...stripComments(source).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
@@ -64,8 +72,9 @@ function findLiterals(code: string): string[] {
 }
 
 describe('组件层零硬编码（DESIGN.md §8.1 / §3 样式集中）', () => {
-  it('src/components/ 下确有图版 / 页码片 / 拍摄单 / 站点标识 / 灯箱五件', () => {
+  it('src/components/ 下确有图版 / 页码片 / 拍摄单 / 站点标识 / 灯箱 / 画册六件', () => {
     expect(COMPONENT_FILES.sort()).toEqual([
+      'src/components/Album.astro',
       'src/components/ExifCard.astro',
       'src/components/Lightbox.astro',
       'src/components/PageChip.astro',
@@ -75,7 +84,7 @@ describe('组件层零硬编码（DESIGN.md §8.1 / §3 样式集中）', () => 
   });
 
   it.each([...COMPONENT_FILES, ...LAYOUT_FILES])('%s：全文无裸色值 / 无第二条曲线 / 无字面 px', (file) => {
-    const code = stripComments(read(file));
+    const code = dropMediaConditions(stripComments(read(file)));
     expect(findLiterals(code), `${file} 里发现硬编码设计值`).toEqual([]);
   });
 
@@ -84,7 +93,7 @@ describe('组件层零硬编码（DESIGN.md §8.1 / §3 样式集中）', () => 
     expect(blocks.length, `${file} 应有自己的结构化样式`).toBeGreaterThan(0);
     for (const block of blocks) {
       expect(block, `${file} 的样式没引用任何 token`).toContain('var(--');
-      const withUnits = [...block.matchAll(/:\s*[^;{}]*?\d+(?:\.\d+)?(?:px|rem|em|pt)\b[^;{}]*/g)].map(
+      const withUnits = [...dropMediaConditions(block).matchAll(/:\s*[^;{}]*?\d+(?:\.\d+)?(?:px|rem|em|pt)\b[^;{}]*/g)].map(
         (m) => m[0].trim(),
       );
       expect(withUnits, `${file} 的样式带长度字面量`).toEqual([]);

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 // 钉四件事，都是「跑一次 e2e 看不见但一改就坏」的：
 //   1. 灯箱外壳的无障碍语义齐备（role/aria-modal/aria-live/inert/焦点回归/标签）；
 //   2. 三条动效分支都在（View Transition / 淡入降级 / reduced-motion instant）且只用 --ease；
-//   3. <Lightbox /> 只挂在有灯箱图版的三页（首页 / 系列详情 / 随笔详情），列表·关于·404 不挂；
+//   3. <Lightbox /> 只挂在有灯箱图版的两页（首页 / 随笔详情；系列详情已改成画册翻页），列表·关于·404 不挂；
 //   4. 帧数据只有一个来源 = 脚本生成的 sidecar 序列化的 frames 岛（组件与页面都不许内联字面帧数据）。
 // =============================================================================
 
@@ -119,24 +119,21 @@ describe('Lightbox 动效分支（任务 3/8 + DESIGN §6 降级）', () => {
 });
 
 describe('挂载范围（任务 10）与数据来源单一（硬约束）', () => {
-  it('只有首页 / 系列详情 / 随笔详情引入 <Lightbox />', () => {
+  it('只有首页 / 随笔详情引入 <Lightbox>（系列详情已改成画册翻页，不再挂灯箱）', () => {
     const users = [
       'src/pages/index.astro',
-      'src/pages/series/[id].astro',
       'src/pages/posts/[slug].astro',
     ];
     for (const file of users) expect(read(file), `${file} 应挂灯箱`).toContain('<Lightbox');
-    // 列表页 / 关于 / 404 / 演示页都不挂
+    // 系列详情 / 列表页 / 关于 / 404 / 演示页都不挂
     const others = [...PAGES, 'src/pages/series/index.astro', 'src/pages/posts/index.astro'].filter(
       (f) => !users.includes(f),
     );
     for (const file of new Set(others)) expect(read(file), `${file} 不该挂灯箱`).not.toContain('<Lightbox');
   });
 
-  it('三页都只在真有帧时才挂外壳（空册 / 纯文字随笔不产壳）', () => {
-    for (const file of ['src/pages/series/[id].astro', 'src/pages/posts/[slug].astro']) {
-      expect(read(file)).toMatch(/\?\s*<Lightbox/);
-    }
+  it('挂灯箱的两页只在真有帧时才挂外壳（纯文字随笔不产壳）', () => {
+    expect(read('src/pages/posts/[slug].astro')).toMatch(/\?\s*<Lightbox/);
     expect(read('src/pages/index.astro')).toMatch(/homeFrameTotal > 0 \? <Lightbox/);
   });
 

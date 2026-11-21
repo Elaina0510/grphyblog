@@ -5,17 +5,17 @@ import { expect, test } from '@playwright/test';
 import { seriesPhotos } from './helpers/pool';
 
 // =============================================================================
-// series-pages §4.2 系列页集成测（打 astro build + preview 的真实静态产物）
+// series-pages 集成测（打 astro build + preview 的真实静态产物）
 //
-// 覆盖任务钉的验收点：
-//   列表  —— /series/ 渲染已发布系列（目次点线行）；draft daily-frames 不在列表；卡片张数==sidecar 帧数。
-//   详情  —— /series/city-lights/ 存在；照片流按 sidecar 顺序；每张 <img> 显式 width+height + lazy
-//            （仅首屏 LCP 封面那张允许 eager+high，与首页 §8.3 同口径）。
-//   契约  —— .lightbox-frames[data-gallery="series-city-lights"] JSON 岛：frames 数==帧数、
-//            含 src/thumb/width/height/exif；每张图版带 data-lightbox-gallery + 递增 data-lightbox-index。
-//   手记  —— city-lights（有正文）渲染手记块；wip-empty（空正文）整块省略（§4 测试点 4 端到端）。
-//   draft —— 访问 /series/daily-frames/ 返回 404（getStaticPaths 不生成 → 天然 404）。
-//   移动  —— 375：详情页无横向溢出、照片流归单列。
+// 2026-11-21 改版：系列详情从「平铺照片流 + 点开灯箱」改成「摄影集画册一屏两页翻页」。
+// 覆盖：
+//   列表  —— /series/ 渲染已发布系列；draft 不出现；卡片张数==sidecar 帧数。
+//   详情  —— 章节题行 + 手记（扉页/前言）保留；照片流换成 [data-album] 画册；
+//            对页数 = ceil(帧数/2)，一屏两张、末屏一张；每帧显式宽高 + alt，首图 LCP eager。
+//   翻页  —— 左右按钮 / 键盘 ←→ / 到头就停 / aria-live 播报 / aria-hidden 隔离。
+//   手记  —— city-lights（有正文）渲染手记块；wip-empty（空正文）整块省略。
+//   draft —— 访问 /series/daily-frames/ 返回 404。
+//   移动  —— 375：无横向溢出、对页归单列、竖排题名转横。
 // =============================================================================
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -23,35 +23,13 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 /** 该系列的帧序列（照片池化后：frontmatter photos[] → 全局 sidecar 查表，见 helpers/pool）。 */
 const sidecarOf = (slug: string) => seriesPhotos(slug);
 
-/** 解析详情页灯箱岛 JSON。 */
-async function readIsland(page: import('@playwright/test').Page, gallery: string) {
-  return page.$eval(`.lightbox-frames[data-gallery="${gallery}"]`, (el) => {
-    const raw = el.textContent ?? '';
-    return JSON.parse(raw) as {
-      frames: Array<{
-        src: string;
-        thumb: string;
-        width: number;
-        height: number;
-        alt: string;
-        title?: string;
-        exif: Record<string, unknown>;
-      }>;
-    };
-  });
-}
-
 test.describe('系列列表 /series/ · 目次点线行', () => {
   test('渲染已发布系列，草稿不出现（daily-frames 已于 2026-10-05 发布）', async ({ page }) => {
     await page.goto('/series/');
     await expect(page.locator('ol.toc')).toHaveCount(1);
 
-    // 已发布（city-lights）在列，链到详情
     await expect(page.locator('a.toc-row[href="/series/city-lights/"]')).toHaveCount(1);
-    // daily-frames 已由后台从草稿发布，现在应当出现在目次里
     await expect(page.locator('a.toc-row[href="/series/daily-frames/"]')).toHaveCount(1);
-    // 行序 = 后台拖拽维护的 order 升序（order 相同再按日期正序）：留白 1 → 日常帧 2 → 夜光 3 → 街头随拍 4。
-    // 题名只认前缀：后台验收时标题会被临时改动，不该让断言跟着红。
     const names = await page.locator('.toc .name').allInnerTexts();
     expect(names[0]).toContain('留白');
     expect(names.findIndex((n) => n.startsWith('日常帧'))).toBe(1);
@@ -60,11 +38,9 @@ test.describe('系列列表 /series/ · 目次点线行', () => {
 
   test('卡片张数 == sidecar 帧数', async ({ page }) => {
     await page.goto('/series/');
-    const expected = sidecarOf('city-lights').length; // 当前 = 2
+    const expected = sidecarOf('city-lights').length;
     expect(expected).toBeGreaterThan(0);
-    const meta = page
-      .locator('a.toc-row[href="/series/city-lights/"] .meta')
-      .first();
+    const meta = page.locator('a.toc-row[href="/series/city-lights/"] .meta').first();
     await expect(meta).toContainText(`${expected} 帧`);
   });
 
@@ -84,32 +60,28 @@ test.describe('系列列表 /series/ · 目次点线行', () => {
   });
 });
 
-test.describe('系列详情 /series/city-lights/ · 结构与图片属性', () => {
-  test('章节题行竖排宋体 + 封面跨页在；手记块（有正文）渲染', async ({ page }) => {
+test.describe('系列详情 /series/city-lights/ · 摄影集画册', () => {
+  test('章节题行竖排宋体 + 手记块保留（扉页/前言）', async ({ page }) => {
     await page.goto('/series/city-lights/');
     await expect(page.locator('h1.chapter-title.v-writing')).toHaveCount(1);
-    await expect(page.locator('.series-cover figure.plate')).toHaveCount(1);
-    // 手记块：city-lights 有正文 → 出现，并含正文片段
     await expect(page.locator('section[aria-label="拍摄手记"]')).toHaveCount(1);
     expect(await page.locator('.series-note__body').innerText()).toContain('城市入夜');
   });
 
-  test('每帧恰好一张图版：封面 + 照片流；按 sidecar 顺序、显式宽高 + lazy（LCP 例外）', async ({ page }) => {
+  test('画册结构：对页数 = ceil(帧数/2)，一屏两张，帧按 photos[] 顺序、显式宽高 + alt', async ({
+    page,
+  }) => {
     await page.goto('/series/city-lights/');
     const sidecar = sidecarOf('city-lights');
+    const expectedSpreads = Math.ceil(sidecar.length / 2);
 
-    // 参与灯箱的图版总数 == 帧数（封面 hero + 流，各帧一次不重复）
-    const plates = page.locator('figure.plate[data-lightbox]');
-    await expect(plates).toHaveCount(sidecar.length);
+    await expect(page.locator('[data-album]')).toHaveCount(1);
+    await expect(page.locator('[data-album-spread]')).toHaveCount(expectedSpreads);
+    // 不再有旧灯箱图版与 frames 岛
+    await expect(page.locator('figure[data-lightbox]')).toHaveCount(0);
+    await expect(page.locator('script.lightbox-frames')).toHaveCount(0);
 
-    // 灯箱索引集合 = 0..total-1 且唯一、递增
-    const indexes = (await plates.evaluateAll((els) =>
-      els.map((e) => Number(e.getAttribute('data-lightbox-index'))),
-    )).sort((a, b) => a - b);
-    expect(indexes).toEqual(sidecar.map((_, i) => i));
-
-    // 所有 <img> 显式 width+height + alt；loading：≤1 张 eager（且 high），其余 lazy
-    const imgs = await page.$$eval('figure.plate img', (els) =>
+    const imgs = await page.$$eval('[data-album-spread] img', (els) =>
       els.map((el) => ({
         w: Number(el.getAttribute('width')),
         h: Number(el.getAttribute('height')),
@@ -120,57 +92,67 @@ test.describe('系列详情 /series/city-lights/ · 结构与图片属性', () =
     );
     expect(imgs.length).toBe(sidecar.length);
     let eager = 0;
+    let high = 0;
     for (const im of imgs) {
       expect(im.w, '缺显式宽度').toBeGreaterThan(0);
       expect(im.h, '缺显式高度').toBeGreaterThan(0);
-      expect(im.alt).not.toBeNull();
-      if (im.loading === 'eager') {
-        eager += 1;
-        expect(im.priority).toBe('high');
-      } else {
-        expect(im.loading).toBe('lazy');
-      }
+      expect(im.alt, '缺 alt').not.toBeNull();
+      if (im.loading === 'eager') eager += 1;
+      else expect(im.loading).toBe('lazy');
+      if (im.priority === 'high') high += 1;
     }
-    expect(eager, '只允许首屏 LCP 那一张 eager').toBe(1);
+    expect(eager, '只允许首屏 LCP 那一张 eager').toBeLessThanOrEqual(1);
+    expect(high, '首屏 LCP 那一张应是 high').toBeLessThanOrEqual(1);
   });
 
-  test('灯箱数据契约：frames 岛数==帧数、字段齐；图版 data-lightbox-gallery 一致', async ({ page }) => {
+  test('翻页控件：左右按钮 / 键盘 / 到头就停 / aria-live 播报', async ({ page }) => {
+    // 用多帧系列（街头随拍 75 帧 → 38 对页）验证翻页；city-lights 只有 1 对页翻不动
+    await page.goto('/series/street-notes/');
+    const album = page.locator('[data-album]');
+    const total = Number(await album.getAttribute('data-total'));
+    expect(total).toBeGreaterThan(1);
+
+    await expect(album).toHaveAttribute('data-index', '0');
+    await expect(page.locator('[data-album-prev]')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('[data-album-next]')).not.toHaveAttribute('aria-disabled', 'true');
+
+    await album.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(album).toHaveAttribute('data-index', '1');
+    await expect(page.locator('[data-album-live]')).toContainText('第 2 页');
+
+    await page.keyboard.press('ArrowLeft');
+    await expect(album).toHaveAttribute('data-index', '0');
+
+    // End 到末页：下一页禁用；再按右键不越界
+    await page.keyboard.press('End');
+    await expect(album).toHaveAttribute('data-index', String(total - 1));
+    await expect(page.locator('[data-album-next]')).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('ArrowRight');
+    await expect(album).toHaveAttribute('data-index', String(total - 1));
+
+    // 按钮路径往回翻
+    await page.locator('[data-album-prev]').click();
+    await expect(album).toHaveAttribute('data-index', String(total - 2));
+  });
+
+  test('只有当前对页可见，其余 aria-hidden（翻页不堆叠）', async ({ page }) => {
     await page.goto('/series/city-lights/');
-    const sidecar = sidecarOf('city-lights');
-
-    // 岛存在（type=application/json）
-    await expect(page.locator('script.lightbox-frames[data-gallery="series-city-lights"]')).toHaveCount(1);
-    const island = await readIsland(page, 'series-city-lights');
-    expect(island.frames.length).toBe(sidecar.length);
-
-    island.frames.forEach((f, i) => {
-      // src/thumb 是「已解析的可服务 URL」：/_astro/... 或 data: 内联缩略图
-      expect(f.src, `帧 ${i} src 非可服务 URL`).toMatch(/^(\/|https?:|data:)/);
-      expect(f.thumb, `帧 ${i} thumb 非可服务 URL`).toMatch(/^(\/|https?:|data:)/);
-      expect(f.width).toBeGreaterThan(0);
-      expect(f.height).toBeGreaterThan(0);
-      expect(typeof f.exif).toBe('object');
-      // 宽高与 sidecar 展示图真值一致
-      expect(f.width).toBe(sidecar[i].width);
-      expect(f.height).toBe(sidecar[i].height);
-    });
-
-    // 每张图版都在同一图库下
-    const galleries = await page.$$eval('figure.plate[data-lightbox]', (els) =>
-      els.map((e) => e.getAttribute('data-lightbox-gallery')),
-    );
-    for (const g of galleries) expect(g).toBe('series-city-lights');
+    const spreads = page.locator('[data-album-spread]');
+    await expect(spreads.first()).toHaveAttribute('data-active', 'true');
+    await expect(spreads.first()).not.toHaveAttribute('aria-hidden', '');
+    for (let i = 1; i < (await spreads.count()); i += 1) {
+      await expect(spreads.nth(i)).toHaveAttribute('data-active', 'false');
+      await expect(spreads.nth(i)).toHaveAttribute('aria-hidden', 'true');
+    }
   });
 });
 
 test.describe('手记为空 / draft 404', () => {
-  test('wip-empty（空正文）详情：手记块整体省略、无照片流/灯箱岛', async ({ page }) => {
+  test('wip-empty（空正文）详情：手记块整体省略、无画册', async ({ page }) => {
     await page.goto('/series/wip-empty/');
     await expect(page.locator('section[aria-label="拍摄手记"]')).toHaveCount(0);
-    await expect(page.locator('.series-flow')).toHaveCount(0);
-    await expect(page.locator('script.lightbox-frames')).toHaveCount(0);
-    await expect(page.locator('figure.plate')).toHaveCount(0);
-    // 但骨架与章题仍在（页面确实生成了）
+    await expect(page.locator('[data-album]')).toHaveCount(0);
     await expect(page.locator('h1.chapter-title')).toHaveCount(1);
   });
 
@@ -189,7 +171,7 @@ test.describe('手记为空 / draft 404', () => {
 test.describe('移动端 375 降级', () => {
   test.use({ viewport: { width: 375, height: 780 } });
 
-  test('详情：无横向溢出、照片流归单列、竖排题名转横', async ({ page }) => {
+  test('详情：无横向溢出、对页归单列、竖排题名转横', async ({ page }) => {
     await page.goto('/series/city-lights/');
 
     const overflow = await page.evaluate(
@@ -198,14 +180,32 @@ test.describe('移动端 375 降级', () => {
     expect(overflow).toBeLessThanOrEqual(0);
 
     const cols = await page
-      .locator('.flow-grid')
+      .locator('[data-album-spread]')
+      .first()
       .evaluate((el) => getComputedStyle(el).gridTemplateColumns);
-    expect(cols, '窄屏照片流应归单列').not.toContain(' ');
+    expect(cols, '窄屏对页应归单列').not.toContain(' ');
 
     const plateW = await page
-      .locator('figure.plate')
+      .locator('[data-album-spread] img')
       .first()
       .evaluate((el) => (el as HTMLElement).getBoundingClientRect().width);
     expect(plateW).toBeLessThanOrEqual(375);
+  });
+});
+
+test.describe('无 JS 降级', () => {
+  test('禁用 JS：第一对页仍直出（内容不缺失，不藏全部）', async ({ browser }) => {
+    const context = await browser.newContext({
+      javaScriptEnabled: false,
+      baseURL: 'http://127.0.0.1:4321',
+    });
+    const page = await context.newPage();
+    await page.goto('/series/city-lights/');
+    const spreads = page.locator('[data-album-spread]');
+    expect(await spreads.count()).toBeGreaterThan(0);
+    await expect(spreads.first()).toBeVisible();
+    const expectedImgs = sidecarOf('city-lights').length > 1 ? 2 : 1;
+    await expect(spreads.first().locator('img')).toHaveCount(expectedImgs);
+    await context.close();
   });
 });

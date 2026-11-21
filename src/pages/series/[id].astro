@@ -1,45 +1,35 @@
 ---
 /* ============================================================================
- * series/[id].astro —— 系列详情（series-pages 任务 3/4/5/6/7）
+ * series/[id].astro —— 系列详情（摄影集画册）
  *
  * 结构（DESIGN §5 / §10 系列=章节）：
  *   ① 章节题行（竖排宋体题名 + 等宽册号朱砂 + 元数据）
- *   ② 封面满版跨页（首帧，LCP eager）
- *   ③ 拍摄手记（entry.body 渲染 · 左右对置 .duo；body 为空则整块自动省略）
- *   ④ 照片流（按 frontmatter photos[] 顺序：PhotoPlate + PageChip 帧号 + ExifCard + 灯箱数据契约）
- *   ⑤ 夜底灯箱外壳（<Lightbox />，仅在有帧时挂载；数据只读 ④ 的 frames 岛，不另起来源）
+ *   ② 拍摄手记（entry.body 渲染 · 左右对置 .duo；body 为空则整块自动省略）
+ *   ③ 摄影集画册（ albums：<Album /> 一屏两页、左右翻页，取代旧的平铺照片流 + 灯箱）
  *
- * 灯箱数据契约（§2，主 Agent 钉死，跨 home/series/posts 共用）：
- *   照片流容器内输出**一个**内联 JSON 岛：
- *     <script type="application/json" class="lightbox-frames" data-gallery="series-<slug>">
- *       {"frames":[{src,thumb,width,height,alt,title?,exif}, ...]}</script>
- *   frames 按 photos[] 顺序；src/thumb = contentImageUrl 解析后的可服务 URL；宽高 = 展示图真值。
- *   每张参与灯箱的图版根 <figure> 带 data-lightbox / data-lightbox-gallery / data-lightbox-index
- *   （经 PhotoPlate 的最小新增可选 prop lightbox/lightboxGallery/lightboxIndex 透传，不破坏既有）。
+ * 呈现方式（2026-11-21 改版）：打开一个选集不再平铺照片 + 点开灯箱，
+ *   而是像实体摄影集那样一屏摊开两张照片、左右翻页。照片顺序 = frontmatter photos[] 顺序。
+ *   首页与随笔详情的灯箱保持原样，本页不再挂 <Lightbox />。
  *
  * 硬约束（勿偏离）：
  *   - getStaticPaths 只对**已发布**系列生成路由 → draft 天然 404；slug = entryResourceDir 末段；
- *   - 图片 URL 只经 contentImageUrl / entryResourceDir；宽高只从 sidecar 取；全部显式宽高 + lazy
- *     （唯首屏 LCP 那张 eager + fetchpriority=high）；
+ *   - 图片 URL 只经 contentImageUrl / entryResourceDir；宽高只从 sidecar 取；全部显式宽高
+ *     （首页化：首对页首图 eager+high，其余 lazy）；
  *   - 张数唯一口径 = frontmatter photos.length（photoCount）；帧序列顺序 = photos[] 顺序；
- *   - 分批纯函数 planPhotoFlow（>30 张时 IO 追加渲染，§6）；当前种子 <30 属正常不分批；
  *   - 手记为空判定 = 纯函数 hasNoteContent（剥注释/符号后无可见文字即省略整块）；
- *   - 复用 Base / PhotoPlate / PageChip / ExifCard / SiteMark，导航品牌页脚不硬编码；
+ *   - 复用 Base / Album / SiteMark，导航品牌页脚不硬编码；
  *   - 样式只走 var(--token)，页面 <style> 无裸色值 / 字号。
  * ==========================================================================*/
 import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
-import PhotoPlate from '../../components/PhotoPlate.astro';
-import ExifCard from '../../components/ExifCard.astro';
-import Lightbox from '../../components/Lightbox.astro';
+import Album from '../../components/Album.astro';
 import type { CollectionEntry } from 'astro:content';
 import { getPublishedSeries } from '../../utils/collections';
 import { contentImageUrl, entryResourceDir, POOL_DIR } from '../../utils/contentImages';
-import { findPoolPhoto, poolSidecar, resolveCoverPhotoId } from '../../utils/photoPool';
+import { findPoolPhoto, poolSidecar } from '../../utils/photoPool';
 import { resolveSeriesCount } from '../../utils/photoCount';
-import { planPhotoFlow } from '../../utils/paginateFlow';
 import { hasNoteContent } from '../../utils/noteBody';
-import type { Exif } from '../../types/photoSidecar';
+import { paginateAlbum, type AlbumPhoto } from '../../utils/album';
 
 /* ---- 照片池化（admin-v2.md D1 / G2）：照片流顺序 = frontmatter 的 photos[]，
  *      宽高 / 缩略图 / EXIF 一律按照片 ID 去**全局** sidecar（pool/photos.meta.json）查；
@@ -87,32 +77,21 @@ const { entry } = Astro.props as { entry: CollectionEntry<'series'> };
 
 const dir = entryResourceDir('series', entry.id);
 const slug = dir.split('/').pop() ?? entry.id;
-const gallery = `series-${slug}`;
 
 /** frontmatter 的照片 ID 列表：顺序即前台照片流顺序（schema 保证是数组）。 */
 const photoIds: string[] = Array.isArray(entry.data.photos) ? entry.data.photos : [];
 /** 张数唯一口径 = photos.length（G1：不再有「缺 sidecar 数文件」的兜底）。 */
 const frameCount = resolveSeriesCount({ photos: photoIds });
 
-/** 一帧的渲染 + 灯箱所需的一切（URL / 真宽高 / alt / exif / 索引）。 */
-interface FrameView {
-  index: number; // 照片流顺序索引（= data-lightbox-index = frames 岛顺序）
-  /** 照片 ID（池内文件名），封面命中按它比 */
+/** 一帧的画册数据（URL / 真宽高 / alt / exif）。 */
+interface FrameView extends AlbumPhoto {
+  /** 照片 ID（池内文件名） */
   id: string;
-  src: string;
-  thumb: string;
-  width: number;
-  height: number;
-  thumbWidth: number;
-  thumbHeight: number;
-  alt: string;
-  exif: Exif;
 }
 
 /**
  * 照片流：严格按 photos[] 顺序逐张查池。
- * 池里查不到的 ID → 构建期告警 + 跳过这张图（不伪造宽高、不占空帧）；
- * 跳过后 index 重新连续编号，保证 data-lightbox-index 与 frames 岛一一对应。
+ * 池里查不到的 ID → 构建期告警 + 跳过这张图（不伪造宽高、不占空帧）。
  */
 const frames: FrameView[] = [];
 for (const id of photoIds) {
@@ -124,47 +103,19 @@ for (const id of photoIds) {
     );
     continue;
   }
-  const index = frames.length;
   frames.push({
-    index,
     id,
     src: serveUrl(POOL_DIR, photo.file),
-    thumb: serveUrl(POOL_DIR, photo.thumb),
     width: photo.width,
     height: photo.height,
-    thumbWidth: photo.thumbWidth,
-    thumbHeight: photo.thumbHeight,
-    alt: `${entry.data.title} · 第 ${index + 1} 帧`,
+    alt: `${entry.data.title} · 第 ${frames.length + 1} 帧`,
     exif: photo.exif,
   });
 }
 
 const total = frames.length;
-
-/* ---- 封面满版跨页（A5 三级回退）：cover（非空）→ photos[0] → 两者皆空则整块不渲染。
- *      cover 指定的那张从照片流剔除，使每帧恰好出现一次、data-lightbox-index 无重复；
- *      frames 岛仍含全部帧。---- */
-const coverId = resolveCoverPhotoId(entry.data.cover, photoIds);
-let heroIndex = coverId ? frames.findIndex((f) => f.id === coverId) : -1;
-if (heroIndex < 0) heroIndex = 0; // cover 指向池里没有的图 / 空 → 退回首帧
-const hero = total > 0 ? frames[heroIndex] : null;
-const flow = frames.filter((f) => f.index !== heroIndex); // 其余帧，保持顺序
-
-/* ---- 灯箱 frames 岛（§2）：JSON.stringify 后把 '<' 转义，杜绝 </script> 提前闭合 ---- */
-const lightboxJson = JSON.stringify({
-  frames: frames.map((f) => ({
-    src: f.src,
-    thumb: f.thumb,
-    width: f.width,
-    height: f.height,
-    alt: f.alt,
-    title: entry.data.title,
-    exif: f.exif,
-  })),
-}).replace(/</g, '\\u003c');
-
-/* ---- 分批计划（§6）：以整页照片数判定；>30 才分批。当前种子 <30 → 不分批，直出全部。---- */
-const plan = planPhotoFlow(total);
+/** 按「一屏两张」切成摄影集对页。 */
+const spreads = paginateAlbum(frames);
 
 /* ---- 手记：body 剥净后无可见文字即整块省略（§4 测试点 4）---- */
 const notePresent = hasNoteContent(entry.body);
@@ -191,34 +142,7 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     </section>
   </div>
 
-  <!-- ② 封面满版跨页：首帧 LCP（eager + high），其余全 lazy -->
-  {
-    hero ? (
-      <div class="wrap">
-        <section class="series-cover" aria-label={`${entry.data.title} · 封面`}>
-          <PhotoPlate
-            class="rise"
-            src={hero.src}
-            width={hero.width}
-            height={hero.height}
-            alt={hero.alt}
-            loading="eager"
-            fetchpriority="high"
-            current={hero.index + 1}
-            total={total}
-            dataFrame={hero.index}
-            lightbox
-            lightboxGallery={gallery}
-            lightboxIndex={hero.index}
-          >
-            <ExifCard slot="caption" exif={hero.exif} />
-          </PhotoPlate>
-        </section>
-      </div>
-    ) : null
-  }
-
-  <!-- ③ 拍摄手记：左右对置；body 为空 → 整块自动省略 -->
+  <!-- ② 拍摄手记：左右对置；body 为空 → 整块自动省略 -->
   {
     notePresent ? (
       <div class="wrap">
@@ -241,96 +165,17 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     ) : null
   }
 
-  <!-- ④ 照片流：按 photos[] 顺序（帧号连续，灯箱接线）+ frames JSON 岛 + >30 IO 追加
-       内嵌图版走 800px 缩略版（显示宽仅 ~531px，省 ~7-10× 传输；封面满版跨页仍用 2560 大图）；
-       点开灯箱取 frames 岛里的 display 大图，全屏清晰度不变。 -->
+  <!-- ③ 摄影集画册：一屏两页、左右翻页（替代旧的平铺照片流 + 夜底灯箱） -->
   {
     total > 0 ? (
       <div class="wrap">
-        <section class="series-flow" aria-label="照片流" data-gallery={gallery}>
-          <div class="chapter-head rise">
-            <span class="chapter-no">FRAMES</span>
-            <h2 class="t-headline">照片流</h2>
-            <span class="chapter-sub">{`共 ${total} 帧 · 依序`}</span>
-          </div>
-
-          <div
-            class="flow-grid rise"
-            data-flow-batched={plan.batched ? 'true' : 'false'}
-            data-flow-initial={plan.firstScreen}
-            data-flow-chunk={plan.chunkSize}
-          >
-            {flow.map((f) => (
-              <PhotoPlate
-                src={f.thumb}
-                width={f.thumbWidth}
-                height={f.thumbHeight}
-                alt={f.alt}
-                current={f.index + 1}
-                total={total}
-                dataFrame={f.index}
-                lightbox
-                lightboxGallery={gallery}
-                lightboxIndex={f.index}
-              >
-                <ExifCard slot="caption" exif={f.exif} />
-              </PhotoPlate>
-            ))}
-          </div>
-
-          {
-            /* 灯箱帧序列岛：始终含全部帧（不受分批影响），按 photos[] 顺序。 */
-            <script
-              type="application/json"
-              class="lightbox-frames"
-              data-gallery={gallery}
-              set:html={lightboxJson}
-            />
-          }
-        </section>
+        <div class="series-album">
+          <Album spreads={spreads} frameTotal={total} label={`${entry.data.title} · 摄影集`} />
+        </div>
       </div>
     ) : null
   }
-
-  <!-- ⑤ 夜底灯箱外壳：有帧才挂（空册不产图版，也不该有壳）；数据仍只读上面那座 frames 岛 -->
-  {total > 0 ? <Lightbox label={`${entry.data.title} · 照片灯箱`} /> : null}
 </Base>
-
-{
-  /* >30 张：IntersectionObserver 追加渲染（§6）。Astro 会把组件里的 <script> 一律提到页头，
-     故不在此按 plan.batched 条件包裹，而是**始终发出**、由运行时 data-flow-batched 决定是否动作：
-     仅当分批、非 reduced-motion、且 IO 可用时，脚本自行隐藏 firstScreen 之后的流内图版并逐批现出；
-     无 JS（seed <30 / 未分批）时该分支不进入，内容全部直出，不藏任何东西。 */
-  <script>
-    const grid = document.querySelector<HTMLElement>('.flow-grid');
-    if (grid && grid.dataset.flowBatched === 'true') {
-      const reduce =
-        typeof matchMedia === 'function' &&
-        matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (!reduce && typeof IntersectionObserver !== 'undefined') {
-        const initial = Number(grid.dataset.flowInitial) || 0;
-        const chunk = Number(grid.dataset.flowChunk) || 12;
-        const plates = Array.from(grid.querySelectorAll<HTMLElement>('.plate'));
-        plates.forEach((el, i) => {
-          if (i >= initial) el.setAttribute('data-flow-hidden', '');
-        });
-        let shown = Math.min(initial, plates.length);
-        // 观察「当前最后一张可见图版」（真图版有面积、IO 稳定触发；空 sentinel 在文档末不判相交）。
-        const io = new IntersectionObserver(
-          (entries) => {
-            if (!entries.some((e) => e.isIntersecting)) return;
-            io.disconnect();
-            const until = Math.min(shown + chunk, plates.length);
-            for (; shown < until; shown += 1) plates[shown].removeAttribute('data-flow-hidden');
-            if (shown < plates.length) io.observe(plates[shown - 1]);
-          },
-          { rootMargin: '200px' },
-        );
-        if (shown < plates.length) io.observe(plates[shown - 1]);
-      }
-    }
-  </script>
-}
 
 <style>
   /* 章节题行：竖排题名是结构件（DESIGN §3.3），此行改基线为顶对齐，让竖排标题与等宽册号/元数据同框。 */
@@ -352,34 +197,5 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
   }
   .series-note__meta p {
     margin: 0;
-  }
-
-  /* 照片流：单栏满宽自然比例（图版即跨页），保持「翻页节奏」下连续图版之间的呼吸。 */
-  .flow-grid {
-    display: grid;
-    gap: var(--gap-stack-lg);
-    margin-top: var(--gap-baseline);
-  }
-  /* 双列起步（§3 交付 7）：≥ 平板两列，窄屏回落到单列。 */
-  @media (min-width: 901px) {
-    .flow-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--gap-duo);
-      /* 同行里横/竖不同比例：整张图版（含下方图注）垂直居中，短图不再顶对齐留白 */
-      align-items: center;
-    }
-  }
-  /* JS 现出态：被脚本临时隐藏的图版不占交互（无 JS 时该属性不会被加，内容全直出）。
-     .plate 来自子组件 PhotoPlate（自带作用域），页面作用域选择器命中不了 → 必须 :global 穿透，
-     否则 data-flow-hidden 不生效、分批形同虚设（全部图版常驻占位）。 */
-  :global(.plate[data-flow-hidden]) {
-    display: none;
-  }
-
-  /* 窄屏 375：满版跨页与流图归单列；竖排题名自动转横排（global .v-writing 媒体查询已处理）。 */
-  @media (max-width: 900px) {
-    .flow-grid {
-      grid-template-columns: 1fr;
-    }
   }
 </style>

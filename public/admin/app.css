@@ -468,6 +468,76 @@ code,
 }
 
 /* ── 编辑页 ───────────────────────────────────────────────────────────── */
+/* ── 首页精选帧 ─────────────────────────────────────────────────────────── */
+/* 一条精选帧：序号 + 缩略图 + ID + 标题/说明输入 + 移除，整条可拖拽排序。 */
+.featured-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-2);
+  width: 100%;
+  padding: var(--gap-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: grab;
+}
+
+.featured-item.dragging {
+  opacity: 0.4;
+}
+
+.featured-item.over {
+  border-color: var(--cinnabar);
+}
+
+.featured-item .no {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  min-width: 18px;
+}
+
+.featured-thumb {
+  width: 68px;
+  height: 46px;
+  object-fit: cover;
+  background: var(--night);
+  flex: none;
+}
+
+.featured-item input[type='text'] {
+  flex: 1 1 160px;
+  min-width: 120px;
+  padding: var(--gap-1) var(--gap-2);
+  font-size: 13px;
+}
+
+/* 挑帧网格里的选中态（只作用于精选帧的格子，不动编辑页的 .pick-box 复选控件） */
+[data-testid='featured-picker'][hidden] {
+  display: none;
+}
+
+[data-testid='featured-pick-tile'] .pick-no {
+  position: absolute;
+  top: var(--gap-1);
+  right: var(--gap-1);
+  min-width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+[data-testid='featured-pick-tile'].picked .pick-no {
+  background: var(--ink);
+  color: var(--paper);
+}
+
 .edit .cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;

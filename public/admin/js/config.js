@@ -31,6 +31,9 @@ export const POOL_PHOTOS_DIR = 'src/content/pool/photos';
 /** 照片池：唯一元数据 sidecar（全局一份）。 */
 export const POOL_SIDECAR_PATH = 'src/content/pool/photos.meta.json';
 
+/** 站点级事实数据（首页精选区 featured.photos 从这里读写；其余字段原样保真）。 */
+export const SITE_DATA_PATH = 'src/data/site.json';
+
 /** 系列条目目录（每条目一个子目录，正文在 index.md）。 */
 export const SERIES_DIR = 'src/content/series';
 

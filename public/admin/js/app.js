@@ -39,6 +39,7 @@ import { planCompression } from './imageplan.js';
 import { decodeImageFile, encodeScaled } from './imaging.js';
 import { mountEditor } from './editor.js';
 import { isValidSlug, postSlugOf, slugFromTitle, validateFields } from './markdown.js';
+import { moveFeatured, validateFeatured } from './site.js';
 
 // -----------------------------------------------------------------------------
 // 状态
@@ -46,9 +47,12 @@ import { isValidSlug, postSlugOf, slugFromTitle, validateFields } from './markdo
 const state = {
   token: '',
   client: null,
-  view: 'login', // login | photos | series | posts | edit
+  view: 'login', // login | photos | featured | series | posts | edit
   pool: [],
   poolSha: '',
+  /** 首页精选帧：整份 site.json + 归一后的 photos 列表 + sha。 */
+  featuredSite: null,
+  featuredSha: '',
   entries: { series: null, posts: null },
   editing: null,
   message: '',
@@ -240,6 +244,8 @@ function logout() {
   state.client = null;
   state.pool = [];
   state.poolSha = '';
+  state.featuredSite = null;
+  state.featuredSha = '';
   state.entries = { series: null, posts: null };
   state.editing = null;
   state.view = 'login';
@@ -275,6 +281,7 @@ function render() {
     button.setAttribute('aria-current', active ? 'true' : 'false');
   }
   if (state.view === 'photos') renderPhotos();
+  else if (state.view === 'featured') renderFeatured();
   else if (state.view === 'series' || state.view === 'posts') renderList(state.view);
   else if (state.view === 'edit') renderEdit();
   else renderLogin();
@@ -385,6 +392,268 @@ async function handleUploads(fileList, input, status) {
   if (fresh) {
     fresh.className = failures.length ? 'status error' : 'status ok';
     fresh.textContent = state.message;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 首页精选帧（featured）：编辑 site.json.featured.photos
+// -----------------------------------------------------------------------------
+async function ensureFeatured() {
+  try {
+    const loaded = await api.loadFeatured(state.client);
+    state.featuredSite = loaded.data;
+    state.featuredSha = loaded.sha;
+  } catch (error) {
+    setFeaturedError(describeError(error));
+    return;
+  }
+  if (state.view === 'featured') render();
+}
+
+function setFeaturedError(text) {
+  state.featuredSite = { __loadError: text };
+}
+
+/** 精选帧列表 = state.featuredSite.featured.photos 的可变工作副本。 */
+function featuredPhotos() {
+  const list = state.featuredSite?.featured?.photos;
+  return Array.isArray(list) ? list : [];
+}
+
+function renderFeatured() {
+  const view = clear($view());
+  const status = el('p', { class: 'status', 'data-testid': 'featured-status' }, ['']);
+
+  if (!state.featuredSite) {
+    view.append(el('h2', {}, ['首页精选帧']), el('p', { class: 'empty' }, ['读取中…']));
+    ensureFeatured();
+    return;
+  }
+  if (state.featuredSite.__loadError) {
+    view.append(
+      el('h2', {}, ['首页精选帧']),
+      el('p', { class: 'status error', 'data-testid': 'featured-status' }, [state.featuredSite.__loadError]),
+    );
+    return;
+  }
+
+  const statusBar = el('div', { class: 'bar' }, [
+    el('span', { class: 'hint' }, [
+      '首页精选区的照片。顺序 = 展示顺序，可拖拽调整；改完保存即写入 src/data/site.json 的 featured.photos，前台重建后生效。',
+    ]),
+    el('span', { class: 'spacer' }),
+    status,
+  ]);
+
+  const listHost = el('div', { class: 'order', 'data-testid': 'featured-list' });
+  buildFeaturedList(listHost, status);
+
+  const pickerToggle = el(
+    'button',
+    {
+      class: 'btn plain small',
+      type: 'button',
+      'data-testid': 'featured-picker-toggle',
+      'aria-expanded': 'false',
+      onclick: () => {
+        picker.hidden = !picker.hidden;
+        pickerToggle.setAttribute('aria-expanded', String(!picker.hidden));
+        pickerToggle.textContent = picker.hidden ? '＋ 从照片池挑帧' : '收起照片池';
+      },
+    },
+    ['＋ 从照片池挑帧'],
+  );
+  const picker = el('div', { class: 'grid', 'data-testid': 'featured-picker' });
+  picker.hidden = true;
+  buildFeaturedPicker(picker, status);
+
+  const saveButton = el(
+    'button',
+    {
+      class: 'btn',
+      type: 'button',
+      'data-testid': 'featured-save',
+      onclick: () => saveFeatured(status, saveButton),
+    },
+    ['保存精选帧'],
+  );
+
+  view.append(
+    el('div', { class: 'bar' }, [
+      el('h2', {}, ['首页精选帧']),
+      el('span', { class: 'spacer' }),
+      saveButton,
+    ]),
+    statusBar,
+    el('h3', {}, ['已选（拖动排序）']),
+    listHost,
+    el('p', { class: 'hint' }, ['从下面挑帧：点照片加入，已选的点「移除」。每张要填标题和说明文字。']),
+    pickerToggle,
+    picker,
+  );
+}
+
+/** 已选帧列表：每张一条，可拖拽排序，标题/说明就地编辑，可移除。 */
+function buildFeaturedList(host, status) {
+  clear(host);
+  const photos = featuredPhotos();
+  photos.forEach((item, index) => {
+    const entry = state.pool.find((row) => entryPhotoId(row) === item.photo);
+    const title = el('input', {
+      type: 'text',
+      value: item.title,
+      placeholder: '标题',
+      'data-testid': 'featured-title',
+      'aria-label': `第 ${index + 1} 帧标题`,
+    });
+    title.addEventListener('input', () => {
+      item.title = title.value;
+    });
+    const alt = el('input', {
+      type: 'text',
+      value: item.alt,
+      placeholder: '说明文字（alt）',
+      'data-testid': 'featured-alt',
+      'aria-label': `第 ${index + 1} 帧说明`,
+    });
+    alt.addEventListener('input', () => {
+      item.alt = alt.value;
+    });
+
+    const row = el(
+      'div',
+      {
+        class: 'featured-item',
+        draggable: 'true',
+        'data-testid': 'featured-item',
+        'data-index': String(index),
+      },
+      [
+        el('span', { class: 'no' }, [`${index + 1}`]),
+        entry ? thumbNode(entry, 'featured-thumb') : el('div', { class: 'broken' }, ['池里查不到']),
+        el('span', { class: 'mono hint', title: item.photo }, [item.photo]),
+        title,
+        alt,
+        el(
+          'button',
+          {
+            class: 'btn plain small danger',
+            type: 'button',
+            'data-testid': 'featured-remove',
+            onclick: () => {
+              const next = featuredPhotos().filter((_, i) => i !== index);
+              state.featuredSite.featured.photos = next;
+              buildFeaturedList(host, status);
+              buildFeaturedPicker(document.querySelector('[data-testid="featured-picker"]'), status);
+              setStatus(status, `已移除 ${item.photo}，记得保存。`, '');
+            },
+          },
+          ['移除'],
+        ),
+      ],
+    );
+
+    row.addEventListener('dragstart', (event) => {
+      dragFrom = index;
+      row.classList.add('dragging');
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(index));
+      }
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      dragFrom = -1;
+    });
+    row.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      row.classList.add('over');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('over'));
+    row.addEventListener('drop', (event) => {
+      event.preventDefault();
+      row.classList.remove('over');
+      const from = dragFrom >= 0 ? dragFrom : Number(event.dataTransfer?.getData('text/plain'));
+      if (!Number.isInteger(from) || from < 0) return;
+      state.featuredSite.featured.photos = moveFeatured(featuredPhotos(), from, index);
+      dragFrom = -1;
+      buildFeaturedList(host, status);
+    });
+    host.append(row);
+  });
+}
+
+/** 照片池网格：点一张图把它加成精选帧（已在选中的显示勾选态）。 */
+function buildFeaturedPicker(host, status) {
+  if (!host) return;
+  clear(host);
+  for (const entry of state.pool) {
+    const id = entryPhotoId(entry);
+    const selected = featuredPhotos().some((item) => item.photo === id);
+    const tile = el(
+      'figure',
+      {
+        class: `tile pickable${selected ? ' picked' : ''}`,
+        'data-testid': 'featured-pick-tile',
+        'data-photo-id': id,
+      },
+      [
+        thumbNode(entry),
+        el('span', { class: 'pick-no' }, [selected ? '✓' : '+']),
+        el('figcaption', {}, [el('span', { class: 'name', title: id }, [id])]),
+      ],
+    );
+    tile.addEventListener('click', () => {
+      const photos = featuredPhotos();
+      if (photos.some((item) => item.photo === id)) {
+        setStatus(status, `${id} 已经在精选帧里了。`, '');
+        return;
+      }
+      const entryMeta = state.pool.find((row) => entryPhotoId(row) === id);
+      const suggested = String(entryMeta?.title ?? '').trim() || id.replace(/\.webp$/i, '');
+      state.featuredSite.featured.photos = [
+        ...photos,
+        { photo: id, title: suggested, alt: suggested },
+      ];
+      buildFeaturedList(document.querySelector('[data-testid="featured-list"]'), status);
+      buildFeaturedPicker(host, status);
+      setStatus(status, `已加入 ${id}，补好标题和说明后保存。`, '');
+    });
+    host.append(tile);
+  }
+}
+
+async function saveFeatured(statusEl, button) {
+  if (!state.client || !state.featuredSite || state.featuredSite.__loadError) return;
+  const poolIds = api.poolIds(state.pool);
+  const photos = featuredPhotos();
+  const errors = validateFeatured(photos, poolIds);
+  if (errors.length) {
+    setStatus(statusEl, errors.join('；'), 'error');
+    return;
+  }
+  const idle = '保存精选帧';
+  if (button) {
+    button.disabled = true;
+    button.textContent = '保存中…';
+  }
+  setStatus(statusEl, '保存中…', '');
+  try {
+    const result = await api.saveFeatured(state.client, {
+      data: state.featuredSite,
+      photos,
+      sha: state.featuredSha,
+    });
+    state.featuredSite = result.data;
+    state.featuredSha = result.sha;
+    setStatus(statusEl, `已保存 ${photos.length} 帧（commit ${String(result.commit).slice(0, 7)}），前台重建后生效。`, 'ok');
+  } catch (error) {
+    setStatus(statusEl, describeError(error), 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = idle;
+    }
   }
 }
 
@@ -1025,6 +1294,16 @@ bootstrap();
 // 测试与排障用的只读入口（浏览器控制台 / Playwright 断言用；不含令牌）
 window.__admin = {
   state,
-  actions: { doLogin, logout, saveEditing, setPhotos, togglePick, startNewEntry, openEntry },
+  actions: {
+    doLogin,
+    logout,
+    saveEditing,
+    setPhotos,
+    togglePick,
+    startNewEntry,
+    openEntry,
+    ensureFeatured,
+    saveFeatured,
+  },
   previewUrl,
 };

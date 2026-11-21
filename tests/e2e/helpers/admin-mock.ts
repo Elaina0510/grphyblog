@@ -45,6 +45,8 @@ export const POST_MD = 'src/content/posts/2026-09-21-morning-fog.md';
 function defaultFiles(sidecar: Array<Record<string, unknown>>): Record<string, string> {
   return {
     'src/content/pool/photos.meta.json': `${JSON.stringify(sidecar, null, 2)}\n`,
+    // 首页精选帧从 site.json.featured.photos 读；mock 里放真文件的当前值。
+    'src/data/site.json': readFileSync(resolve(ROOT, 'src/data/site.json'), 'utf8'),
     [SERIES_MD]: readFileSync(resolve(ROOT, SERIES_MD), 'utf8'),
     [POST_MD]: readFileSync(resolve(ROOT, POST_MD), 'utf8'),
     'src/content/posts/2026-07-02-alley-light.md': readFileSync(

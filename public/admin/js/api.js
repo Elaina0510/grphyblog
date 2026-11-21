@@ -12,7 +12,7 @@
 //   故顺序固定为「先图后册」，sidecar 写失败会自动重试一次（sha 可能被别处改掉）。
 // =============================================================================
 
-import { POOL_SIDECAR_PATH, SERIES_DIR, POSTS_DIR } from './config.js';
+import { POOL_SIDECAR_PATH, SITE_DATA_PATH, SERIES_DIR, POSTS_DIR } from './config.js';
 import {
   appendPhotoEntry,
   buildUploadEntry,
@@ -29,6 +29,7 @@ import {
   postFileName,
   seriesEntryPath,
 } from './markdown.js';
+import { featuredOf, parseSiteData, setFeatured, siteDataText } from './site.js';
 
 /** sidecar 的磁盘文本口径：2 空格缩进 + 结尾换行（与仓库现有文件同形，diff 才干净）。 */
 export function sidecarText(sidecar) {
@@ -58,6 +59,30 @@ export async function loadPool(client) {
 export async function savePool(client, sidecar, sha, message = 'content(pool): 登记照片') {
   const result = await client.writeFile(POOL_SIDECAR_PATH, sidecarText(sidecar), { message, sha });
   return { sha: result.sha };
+}
+
+/**
+ * 读首页精选帧：site.json → featured.photos（三键对象数组），附带整份数据与 sha。
+ * featured.photos 缺失按空数组处理；坏 JSON / 顶层形状错则抛错——宁可不显示，
+ * 也不拿半份站点数据写回（会把导航 / 版权页等站点事实冲掉）。
+ */
+export async function loadFeatured(client) {
+  const file = await client.readFile(SITE_DATA_PATH);
+  const data = parseSiteData(file.text);
+  return { data, photos: featuredOf(data), sha: file.sha, path: file.path };
+}
+
+/**
+ * 写精选帧：只替换 featured.photos，其余站点事实原样保真。
+ * sha 一起带上（乐观锁，防止编辑期间 site.json 被别处改过）。
+ */
+export async function saveFeatured(client, { data, photos, sha }) {
+  const next = setFeatured(data, photos);
+  const result = await client.writeFile(SITE_DATA_PATH, siteDataText(next), {
+    message: `content(site): 更新首页精选帧（${photos.length} 帧）`,
+    sha,
+  });
+  return { sha: result.sha, commit: result.commit, data: next, path: SITE_DATA_PATH };
 }
 
 /**

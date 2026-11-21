@@ -1,0 +1,345 @@
+---
+/* ============================================================================
+ * Album.astro —— 摄影集画册翻页（系列详情页的照片呈现方式）
+ *
+ * 一屏摊开两张照片（对页），左右翻页，像翻实体摄影集。取代旧的「平铺网格 + 点开灯箱」。
+ *
+ * 数据：由页面把所有帧按 album.paginateAlbum 切成对页传进来；本组件不产数据、
+ *       不内联任何照片路径。宽高一律 sidecar 真值（页面已解析好 URL）。
+ *
+ * 交互：
+ *   - 左右按钮 / 键盘 ←→（Home/End）/ 触摸左右滑 翻页；
+ *   - 到头就停（aria-disabled，但按钮仍可聚焦，焦点不吃掉）；
+ *   - 换页 aria-live 播报「第 N 页，共 M 页」；
+ *   - 页码片走 PageChip（帧号语义沿用）。
+ *
+ * 无 JS 降级：所有对页都渲染进 DOM，CSS 默认只显示第一屏（.album[data-ready] 之前）；
+ *   JS 启动后给根加 data-ready，才按 data-index 显示当前页。禁用 JS 时读者仍能看到第一对页，
+ *   内容不缺失（不藏全部、不造空壳）。
+ *
+ * 硬约束：样式值只走 global.css 的 var()（组件层零色值 / 零字面尺寸）。
+ * ==========================================================================*/
+import PageChip from './PageChip.astro';
+import { announceSpread, spreadLabel } from '../utils/album';
+import type { AlbumSpread } from '../utils/album';
+
+interface Props {
+  spreads: AlbumSpread[];
+  /** 照片总帧数（可能小于 spreads.length * 2，末屏只有 1 张时） */
+  frameTotal?: number;
+  /** 画册的可读名（无障碍） */
+  label?: string;
+}
+
+const { spreads, frameTotal, label = '摄影集画册' } = Astro.props;
+const total = spreads.length;
+const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0);
+---
+
+<section
+  class="album rise"
+  data-album
+  data-ready="false"
+  data-index="0"
+  data-total={total}
+  aria-label={label}
+  tabindex="0"
+>
+  {
+    total > 0 ? (
+      <div class="album-bar">
+        <button type="button" class="album-nav" data-album-prev aria-label="上一页（左方向键）">
+          <span aria-hidden="true">←</span>
+        </button>
+        <span class="album-chip" data-album-chip>
+          {spreadLabel(0, total)}
+        </span>
+        <output class="album-live" data-album-live role="status" aria-live="polite">
+          {announceSpread(0, total)}
+        </output>
+        <button type="button" class="album-nav" data-album-next aria-label="下一页（右方向键）">
+          <span aria-hidden="true">→</span>
+        </button>
+      </div>
+    ) : null
+  }
+
+  <div class="album-stage" data-album-stage>
+    {
+      spreads.map((spread, pageIndex) => (
+        <div
+          class="album-spread"
+          data-album-spread
+          data-index={pageIndex}
+          data-active={pageIndex === 0 ? 'true' : 'false'}
+          aria-hidden={pageIndex === 0 ? undefined : 'true'}
+        >
+          {spread.photos.map((item, within) => (
+            <figure class="album-plate">
+              <div class="album-plate__media">
+                <img
+                  src={item.src}
+                  width={item.width}
+                  height={item.height}
+                  alt={item.alt}
+                  loading={pageIndex === 0 && within === 0 ? 'eager' : 'lazy'}
+                  decoding="async"
+                  fetchpriority={pageIndex === 0 && within === 0 ? 'high' : undefined}
+                />
+                <PageChip current={pageIndex * 2 + within + 1} total={frameCount} />
+              </div>
+            </figure>
+          ))}
+        </div>
+      ))
+    }
+  </div>
+
+  {
+    total > 0 ? (
+      <p class="album-hint mono" aria-hidden="true">
+        左右方向键 / 滑动翻页 · {spreadLabel(0, total)}
+      </p>
+    ) : null
+  }
+</section>
+
+<style>
+  .album {
+    position: relative;
+  }
+
+  .album:focus {
+    outline: none;
+  }
+
+  .album:focus-visible {
+    outline: var(--rule-w) solid var(--ink);
+    outline-offset: var(--hairline-gap);
+  }
+
+  .album-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-inline);
+    margin-bottom: var(--gap-baseline);
+  }
+
+  .album-chip {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-md);
+    letter-spacing: var(--tracking-wide);
+    color: var(--paper);
+    background: var(--night);
+    padding: var(--gap-stack-xs) var(--gap-stack-sm);
+  }
+
+  .album-live {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    letter-spacing: var(--tracking-label);
+    color: var(--ink-soft);
+  }
+
+  .album-nav {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-lg);
+    color: var(--ink);
+    background: none;
+    border: var(--rule-w) solid var(--rule);
+    border-radius: 0;
+    min-width: var(--lb-hit);
+    min-height: var(--lb-hit);
+    padding: var(--gap-stack-xs);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .album-nav:hover,
+  .album-nav:focus-visible {
+    color: var(--cinnabar);
+    border-color: var(--cinnabar);
+  }
+
+  .album-nav[aria-disabled='true'] {
+    opacity: var(--lb-dim);
+    cursor: default;
+  }
+
+  /* 舞台：一屏一个对页，两图并排；窄屏退化为上下（单页） */
+  .album-stage {
+    display: grid;
+  }
+
+  .album-spread {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap-spread);
+    align-items: center;
+  }
+
+  /* 默认（含无 JS）：只显示第一屏；JS 起来后 data-ready=true，按 data-active 切 */
+  .album-spread[data-active='false'] {
+    display: none;
+  }
+
+  .album[data-ready='true'] .album-spread[data-active='true'] {
+    display: grid;
+    animation: album-turn var(--dur-morph) var(--ease) both;
+  }
+
+  .album-plate {
+    margin: 0;
+  }
+
+  .album-plate__media {
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-plate);
+    background: var(--paper-deep);
+  }
+
+  .album-plate__media > img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .album-hint {
+    text-align: center;
+    font-size: var(--text-label);
+    color: var(--ink-soft);
+    margin-top: var(--gap-baseline);
+  }
+
+  @keyframes album-turn {
+    from {
+      opacity: 0;
+      transform: translateX(var(--album-turn-shift));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .album-spread,
+    .album[data-ready='true'] .album-spread[data-active='true'] {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .album[data-ready='true'] .album-spread[data-active='true'] {
+      animation: none;
+    }
+  }
+</style>
+
+<script>
+  import { announceSpread, clampSpread, spreadLabel } from '../utils/album';
+
+  const root = document.querySelector<HTMLElement>('[data-album]');
+  if (root) {
+    const spreads = Array.from(root.querySelectorAll<HTMLElement>('[data-album-spread]'));
+    const total = spreads.length;
+    const prev = root.querySelector<HTMLButtonElement>('[data-album-prev]');
+    const next = root.querySelector<HTMLButtonElement>('[data-album-next]');
+    const chip = root.querySelector<HTMLElement>('[data-album-chip]');
+    const live = root.querySelector<HTMLElement>('[data-album-live]');
+    const stage = root.querySelector<HTMLElement>('[data-album-stage]');
+    const hint = root.querySelector<HTMLElement>('.album-hint');
+
+    if (total > 0 && prev && next && chip && live && stage) {
+      let index = 0;
+      const reduce =
+        typeof matchMedia === 'function' &&
+        matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      function paint(): void {
+        spreads.forEach((s, i) => {
+          const active = i === index;
+          s.dataset.active = String(active);
+          if (active) s.removeAttribute('aria-hidden');
+          else s.setAttribute('aria-hidden', 'true');
+        });
+        chip!.textContent = spreadLabel(index, total);
+        live!.textContent = announceSpread(index, total);
+        if (hint) {
+          const base = hint.textContent ?? '';
+          hint.textContent = base.replace(/\d+\s*\/\s*\d+\s*$/, spreadLabel(index, total));
+        }
+        prev!.setAttribute('aria-disabled', String(index <= 0));
+        next!.setAttribute('aria-disabled', String(index >= total - 1));
+        root!.dataset.index = String(index);
+        root!.dataset.ready = 'true';
+      }
+
+      function go(delta: number): void {
+        const target = clampSpread(index + delta, total);
+        if (target === index) return;
+        index = target;
+        paint();
+      }
+
+      prev.addEventListener('click', () => go(-1));
+      next.addEventListener('click', () => go(1));
+
+      document.addEventListener('keydown', (event) => {
+        // 只在本画册获得焦点（或焦点在其内部按钮）时接管方向键，
+        // 免得抢了全站滚动/其他交互；读者点进画册后方向键就是翻页。
+        const active = document.activeElement;
+        if (active !== root && !root.contains(active)) return;
+        switch (event.key) {
+          case 'ArrowRight':
+            event.preventDefault();
+            go(1);
+            break;
+          case 'ArrowLeft':
+            event.preventDefault();
+            go(-1);
+            break;
+          case 'Home':
+            event.preventDefault();
+            index = 0;
+            paint();
+            break;
+          case 'End':
+            event.preventDefault();
+            index = total - 1;
+            paint();
+            break;
+          default:
+            break;
+        }
+      });
+
+      // 触摸左右滑翻页（指针事件，鼠标不接管，避免与点击冲突）
+      let gesture: { x: number; y: number; id: number } | null = null;
+      stage.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse') return;
+        gesture = { x: event.clientX, y: event.clientY, id: event.pointerId };
+      });
+      stage.addEventListener('pointerup', (event) => {
+        if (!gesture || gesture.id !== event.pointerId) return;
+        const dx = event.clientX - gesture.x;
+        const dy = event.clientY - gesture.y;
+        gesture = null;
+        if (Math.abs(dx) < Math.abs(dy)) return; // 竖滑不算翻页
+        const threshold = Math.max(40, window.innerWidth * 0.08);
+        if (dx <= -threshold) go(1);
+        else if (dx >= threshold) go(-1);
+      });
+      stage.addEventListener('pointercancel', () => {
+        gesture = null;
+      });
+
+      void reduce; // 动效开关由 CSS 媒体查询承担，JS 无需分支
+      paint();
+    }
+  }
+</script>

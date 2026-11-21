@@ -4,8 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-import { seriesPhotos } from './helpers/pool';
-
 // =============================================================================
 // lightbox 模块 · 灯箱 E2E（打 astro build + astro preview 的真实静态产物）
 //
@@ -66,9 +64,6 @@ type Sidecar = Array<{ file: string; thumb: string; width: number; height: numbe
 const site = readJson<{ featured: { photos: Array<{ photo: string }> } }>('src/data/site.json');
 const HOME_FRAMES = [...new Set(site.featured.photos.map((p) => p.photo))].length;
 
-/* 系列详情：帧 = 该系列 photos[] 在照片池里查到的条目（封面 + 照片流各出现一次，不重复） */
-const SERIES_SIDECAR = seriesPhotos('city-lights');
-
 /* 随笔详情：帧 = 正文真引用的插图（photo:<ID> 语法，去重） */
 const POST_SLUG = '2026-09-21-morning-fog';
 const POST_BODY = readFileSync(resolve(ROOT, `src/content/posts/${POST_SLUG}.md`), 'utf8')
@@ -86,14 +81,6 @@ const ENTRIES: Entry[] = [
     expectedFrames: HOME_FRAMES,
     expectedPlates: HOME_FRAMES + 1, // 开场图另占一张图版（与精选首图同索引）
     multi: HOME_FRAMES > 1,
-  },
-  {
-    name: '系列详情 · 照片流',
-    path: '/series/city-lights/',
-    gallery: 'series-city-lights',
-    expectedFrames: SERIES_SIDECAR.length,
-    expectedPlates: SERIES_SIDECAR.length,
-    multi: SERIES_SIDECAR.length > 1,
   },
   {
     name: '随笔详情 · 正文插图',
@@ -528,7 +515,7 @@ async function imgFrame(page: Page): Promise<string> {
 
 test.describe('动效 · View Transition / 淡入降级 / reduced-motion', () => {
   test('支持 VT：图版被命名 plate、结束后清名，开与关都到终态', async ({ page }) => {
-    await page.goto('/series/city-lights/');
+    await page.goto('/');
     await watchPlateStyle(page);
 
     await openByClick(page);
@@ -569,7 +556,7 @@ test.describe('动效 · View Transition / 淡入降级 / reduced-motion', () =>
         value: undefined,
       });
     });
-    await page.goto('/series/city-lights/');
+    await page.goto('/');
     await openByClick(page);
 
     expect(await attr(page, SHELL, 'data-lb-motion')).toBe('fade');
@@ -590,7 +577,7 @@ test.describe('动效 · prefers-reduced-motion（直开直关，三处入口一
   test.use({ reducedMotion: 'reduce' });
 
   test('不叫 View Transition、不给图版命名、拍摄单无位移', async ({ page }) => {
-    await page.goto('/series/city-lights/');
+    await page.goto('/');
     await watchPlateStyle(page);
 
     await openByClick(page);
@@ -642,8 +629,8 @@ test.describe('动效 · prefers-reduced-motion（直开直关，三处入口一
 test.describe('预加载相邻帧（验收：切帧不明显白屏）', () => {
   test('开在第 1 帧时，第 2 帧的展示图已被提前拉起', async ({ page }) => {
     await watchImageSrcAssignments(page);
-    await page.goto('/series/city-lights/');
-    const frames = await islandFrames(page, 'series-city-lights');
+    await page.goto('/');
+    const frames = await islandFrames(page, 'home');
     expect(frames.length).toBeGreaterThan(1);
 
     await openByClick(page);
@@ -653,7 +640,7 @@ test.describe('预加载相邻帧（验收：切帧不明显白屏）', () => {
   });
 
   test('切到末帧后前一帧在预加载名单里，且展示图渐进替换完成', async ({ page }) => {
-    await page.goto('/series/city-lights/');
+    await page.goto('/');
     await openByClick(page);
     await page.keyboard.press('End');
     await expect(page.locator(IMAGE)).toHaveAttribute('data-lb-frame', '1');
@@ -668,7 +655,7 @@ test.describe('移动端 375 · 触摸目标与手势（桌面模拟）', () => 
   test.use({ viewport: { width: 375, height: 780 }, hasTouch: true });
 
   test('控制按钮触摸目标 ≥ 44，灯箱不超出视口', async ({ page }) => {
-    await page.goto('/series/city-lights/');
+    await page.goto('/');
     await plates(page).first().tap();
     await expect(page.locator(SHELL)).toBeVisible();
 
@@ -685,7 +672,7 @@ test.describe('移动端 375 · 触摸目标与手势（桌面模拟）', () => 
   });
 
   test('左右滑切帧 + 下滑关闭（触摸型指针事件）', async ({ page }) => {
-    await page.goto('/series/city-lights/');
+    await page.goto('/');
     // 按帧号开在第 1 帧（封面未必是 photos[0]，见 openByClick 说明）
     await page.locator('figure[data-lightbox][data-lightbox-index="0"]').first().tap();
     await expect(page.locator(IMAGE)).toHaveAttribute('data-lb-frame', '0');
@@ -741,8 +728,8 @@ test.describe('不挂灯箱的页面 / 无 JS 降级', () => {
   test('禁用 JS：外壳保持隐藏，图版与 frames 岛仍在（内容不缺失）', async ({ browser }) => {
     const context = await browser.newContext({ javaScriptEnabled: false, baseURL: BASE_URL });
     const page = await context.newPage();
-    await page.goto('/series/city-lights/');
-    await expect(page.locator('figure[data-lightbox]')).toHaveCount(SERIES_SIDECAR.length);
+    await page.goto('/');
+    await expect(page.locator('figure[data-lightbox]')).toHaveCount(HOME_FRAMES + 1);
     await expect(page.locator('script.lightbox-frames')).toHaveCount(1);
     await expect(page.locator(SHELL)).toHaveCount(1);
     await expect(page.locator(SHELL)).toBeHidden();
@@ -756,8 +743,8 @@ test.describe('不挂灯箱的页面 / 无 JS 降级', () => {
     });
     page.on('pageerror', (e) => noise.push(`pageerror: ${e.message}`));
 
-    await page.goto('/series/city-lights/');
-    const plateCount = await plates(page).count();
+    await page.goto('/');
+    const imgBefore = await page.locator('img').count();
     expect(
       await page.evaluate(() => document.querySelector('[data-lb]')?.parentElement === document.body),
       '外壳没被搬到 body 末尾（背景就无法 inert）',
@@ -777,8 +764,8 @@ test.describe('不挂灯箱的页面 / 无 JS 降级', () => {
     expect(
       await page.evaluate(() => document.documentElement.classList.contains('lb-lock')),
     ).toBe(false);
-    // 灯箱的帧图只活在灯箱里：关掉后页面 <img> 数量回到图版本身（§6 扫描不被污染）
-    expect(await page.locator('img').count()).toBe(plateCount);
+    // 灯箱的帧图只活在灯箱里：关掉后页面 <img> 数量回到打开前（不残留、不污染 §6 扫描）
+    expect(await page.locator('img').count()).toBe(imgBefore);
     expect(await page.locator('.lb-img').count()).toBe(0);
     expect(noise, `灯箱全程吐了告警/错误：${noise.join(' | ')}`).toEqual([]);
 

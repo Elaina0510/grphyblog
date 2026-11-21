@@ -38,7 +38,7 @@ test.describe('/admin 登录', () => {
     await expect(page.locator('[data-testid="nav"]')).toBeHidden();
   });
 
-  test('粘贴令牌登录：进入照片池，出现「照片池 / 系列 / 随笔」三个板块', async ({ page }) => {
+  test('粘贴令牌登录：进入照片池，出现「照片池 / 精选帧 / 系列 / 随笔」四个板块', async ({ page }) => {
     await installGitHubMock(page);
     await page.goto('/admin/');
     await page.fill('[data-testid="token-input"]', 'e2e-token');
@@ -46,11 +46,12 @@ test.describe('/admin 登录', () => {
 
     await expect(page.locator('[data-testid="pool-grid"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav"]')).toBeVisible();
-    await expect(page.locator('[data-testid="nav"] button')).toHaveCount(3);
+    await expect(page.locator('[data-testid="nav"] button')).toHaveCount(4);
     await expect(page.locator('[data-testid="nav-photos"]')).toHaveText('照片池');
+    await expect(page.locator('[data-testid="nav-featured"]')).toHaveText('精选帧');
     await expect(page.locator('[data-testid="nav-series"]')).toHaveText('系列');
     await expect(page.locator('[data-testid="nav-posts"]')).toHaveText('随笔');
-    // 三个板块都能点开（片段渲染不崩）
+    // 四个板块都能点开（片段渲染不崩）
     await page.click('[data-testid="nav-series"]');
     await expect(page.locator('[data-testid="entry-list"]')).toBeVisible();
     await page.click('[data-testid="nav-posts"]');

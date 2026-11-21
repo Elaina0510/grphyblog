@@ -134,6 +134,7 @@
   --dur-hover: 0.8s; /* 满版图版呼吸级 hover */
   --dur-fast: 0.2s; /* 细线/颜色微反馈 */
   --dur-fade: 0.35s; /* 灯箱开合 */
+  --album-turn-shift: 12px; /* 画册翻页入场位移 */
   --rise-y: 26px; /* rise 起始位移 */
   --rise-clip: 12%; /* rise 起始裁切 */
   --sheet-y: 18px; /* 拍摄单起始位移 */
