@@ -234,23 +234,28 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--gap-spread);
     align-items: center;
-    backface-visibility: hidden; /* 关键：背面在翻过来之前不可见 */
     background: var(--paper);
     box-shadow: var(--shadow-plate);
   }
 
-  .album-leaf__back {
-    transform: rotateY(180deg); /* 背面预先翻好，等叶子整体翻过来时正对读者 */
+  /* 正面（旧页）：翻过 90° 后藏起来，避免它背对时透出来干扰背面 */
+  .album-leaf__front {
+    backface-visibility: hidden;
   }
 
-  /* 背面（新页）随翻页渐渐显出，翻到后半段已经清晰，避免落定瞬间才蹦出来 */
+  .album-leaf__back {
+    transform: rotateY(180deg); /* 背面预先翻好，等叶子整体翻过来时正对读者 */
+    backface-visibility: hidden;
+  }
+
+  /* 背面（新页）随翻页渐渐显出，翻到后半段已清晰，避免落定瞬间才蹦出来 */
   .album-leaf[data-dir='next'][data-turning='true'] .album-leaf__back {
     animation: leaf-back-in var(--dur-page-turn) ease-in both;
   }
 
   @keyframes leaf-back-in {
     0%,
-    40% {
+    35% {
       opacity: 0;
     }
     to {
