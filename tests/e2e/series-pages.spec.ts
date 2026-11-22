@@ -144,6 +144,33 @@ test.describe('系列详情 /series/daily-frames/ · 摄影集画册', () => {
     await expect(album).toHaveAttribute('data-index', String(total - 2));
   });
 
+  test('宽屏图片不被页框裁切：竖图也要完整落在版心里', async ({ page }) => {
+    // 街头随拍第 13/14 帧是竖构图（601×800），曾因 grid 行高循环依赖顶出页框被 overflow 裁掉
+    await page.goto('/series/street-notes/');
+    await page.locator('[data-album-strip-item]').nth(12).click();
+
+    const boxes = await page.evaluate(() => {
+      const figs = [
+        ...document.querySelectorAll('[data-album-spread][data-state="active"] .album-plate'),
+      ];
+      return figs.map((f) => {
+        const img = f.querySelector('img') as HTMLImageElement;
+        const media = f.querySelector('.album-plate__media') as HTMLElement;
+        const ir = img.getBoundingClientRect();
+        const mr = media.getBoundingClientRect();
+        return {
+          overflowX: Math.round(ir.width - mr.width),
+          overflowY: Math.round(ir.height - mr.height),
+        };
+      });
+    });
+    expect(boxes.length).toBeGreaterThan(0);
+    for (const b of boxes) {
+      expect(b.overflowX, '图片宽度溢出页框').toBeLessThanOrEqual(1);
+      expect(b.overflowY, '图片高度溢出页框（竖图被裁）').toBeLessThanOrEqual(1);
+    }
+  });
+
   test('只有当前对页可见，其余 aria-hidden（翻页不堆叠）', async ({ page }) => {
     await page.goto('/series/daily-frames/');
     const spreads = page.locator('[data-album-spread]');
