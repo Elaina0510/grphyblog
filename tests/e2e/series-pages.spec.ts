@@ -57,9 +57,19 @@ test.describe('系列列表 /series/ · 目次点线行', () => {
 });
 
 test.describe('系列详情 /series/daily-frames/ · 摄影集画册', () => {
-  test('章节题行竖排宋体 + 手记块（正文只有注释 → 省略）', async ({ page }) => {
+  test('册名不再占版面：题行整块撤掉，只留读屏可读的 h1', async ({ page }) => {
     await page.goto('/series/daily-frames/');
-    await expect(page.locator('h1.chapter-title.v-writing')).toHaveCount(1);
+    // 视觉上整块题行已移除
+    await expect(page.locator('section.series-detail')).toHaveCount(0);
+    await expect(page.locator('.chapter-head, .chapter-no, .chapter-sub')).toHaveCount(0);
+
+    // h1 仍在文档里，但被 sr-only 压成 1px
+    const h1 = page.locator('h1.chapter-title');
+    await expect(h1).toHaveCount(1);
+    const box = await h1.boundingBox();
+    expect(box).not.toBeNull();
+    expect((box as { height: number }).height).toBeLessThanOrEqual(1);
+
     // daily-frames 正文只有 HTML 注释 → hasNoteContent=false → 手记块整块省略
     await expect(page.locator('section[aria-label="拍摄手记"]')).toHaveCount(0);
   });

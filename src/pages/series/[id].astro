@@ -145,18 +145,10 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     ) : null
   }
 
-  <!-- ② 章节题行：竖排宋体题名 + 等宽册号（朱砂）+ 元数据 -->
-  <div class="wrap">
-    <section class="series-detail" aria-label={entry.data.title}>
-      <div class="chapter-head rise">
-        <span class="chapter-no">SERIES · {slug}</span>
-        <h1 class="t-headline chapter-title v-writing">{entry.data.title}</h1>
-        <span class="chapter-sub">{metaLine}</span>
-      </div>
-    </section>
-  </div>
+  <!-- ① 册名：视觉上不占位（sr-only），只留给读屏与搜索引擎 -->
+  <h1 class="chapter-title v-writing sr-only">{entry.data.title}</h1>
 
-  <!-- ③ 拍摄手记：左右对置；body 为空 → 整块自动省略 -->
+  <!-- ② 拍摄手记：左右对置；body 为空 → 整块自动省略 -->
   {
     notePresent ? (
       <div class="wrap">
@@ -191,16 +183,6 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
   /* 册后记：照片看完才交代这是哪一本 */
   .wrap--album + .wrap {
     margin-top: var(--gap-page);
-  }
-
-  /* 章节题行：竖排题名是结构件（DESIGN §3.3），此行改基线为顶对齐，让竖排标题与等宽册号/元数据同框。 */
-  .series-detail .chapter-head {
-    align-items: flex-start;
-    gap: var(--gap-baseline);
-  }
-  .chapter-title {
-    /* 竖排题名超长时 writing-mode 自然折成多列；不裁切，仅约束可占宽度上限（复用留白 token）。 */
-    max-inline-size: var(--gap-page);
   }
 
   /* 手记对置：左散文（行长 ≤ measure）· 右等宽批注（.marginalia 已由 global 供顶线朱砂） */

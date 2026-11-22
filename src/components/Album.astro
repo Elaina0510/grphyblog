@@ -58,10 +58,6 @@ const frameCount = frameTotal ?? frames.length;
   {
     total > 0 ? (
       <div class="album-frame">
-        <button type="button" class="album-nav album-nav--prev" data-album-prev aria-label="上一页（左方向键）">
-          <span aria-hidden="true">←</span>
-        </button>
-
         <div class="album-stage" data-album-stage>
     {
       spreads.map((spread, pageIndex) => (
@@ -108,9 +104,24 @@ const frameCount = frameTotal ?? frames.length;
     </div>
         </div>
 
-        <button type="button" class="album-nav album-nav--next" data-album-next aria-label="下一页（右方向键）">
-          <span aria-hidden="true">→</span>
-        </button>
+        <div class="album-navbar">
+          <button
+            type="button"
+            class="album-nav album-nav--prev"
+            data-album-prev
+            aria-label="上一页（左方向键）"
+          >
+            <span aria-hidden="true">←</span>
+          </button>
+          <button
+            type="button"
+            class="album-nav album-nav--next"
+            data-album-next
+            aria-label="下一页（右方向键）"
+          >
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
       </div>
 
       <div class="album-foot">
@@ -157,13 +168,18 @@ const frameCount = frameTotal ?? frames.length;
     outline-offset: var(--hairline-gap);
   }
 
-  /* 舞台 + 两侧翻页键：按钮占 1/3 列，舞台在中间列 */
+  /* 舞台 + 两侧翻页键：按钮占 1/3 列，舞台在中间列。
+     窄屏时 .album-navbar 从 contents 变成一行，按钮落到照片下方，不压照片。 */
   .album-frame {
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--gap-inline);
+  }
+
+  .album-navbar {
+    display: contents;
   }
 
   .album-chip {
@@ -217,10 +233,12 @@ const frameCount = frameTotal ?? frames.length;
     grid-area: 1 / 3;
   }
 
-  /* 舞台：所有页叠在同一个网格单元里。翻页时由双面书叶接管，真实页先隐藏。 */
+  /* 舞台：所有页叠在同一个网格单元里。翻页时由双面书叶接管，真实页先隐藏。
+     投影只加在舞台整体上 —— 两页各自投影会在中缝叠加成一条脏影。 */
   .album-stage {
     grid-area: 1 / 2;
     display: grid;
+    box-shadow: var(--shadow-plate);
     perspective: var(--album-spread-perspective);
   }
 
@@ -235,29 +253,19 @@ const frameCount = frameTotal ?? frames.length;
     align-items: stretch;
   }
 
-  /* 书脊：每张图的内侧边缘向中缝压一道暗部，接缝处相接成折痕。
-     折痕跟着各自的图走 —— 两图高度不一致时不会伸到空白里。 */
-  .album-plate__media::after {
+  /* 书脊：两页之间一条实色窄脊（纸白 6 + 两侧发丝线），干净、不压照片。
+     翻页时书叶两面也画一份，中缝不会在中途消失。 */
+  :is(.album-spread, .album-leaf__face)[data-count='2']::after {
     content: '';
     position: absolute;
     top: 0;
     bottom: 0;
-    width: var(--album-spine-w);
+    left: 50%;
+    z-index: 2;
+    width: var(--album-spine-bar);
+    transform: translateX(-50%);
+    background: var(--album-spine-fill);
     pointer-events: none;
-  }
-
-  :is(.album-spread, .album-leaf__face)[data-count='2']
-    > .album-plate:nth-of-type(1)
-    .album-plate__media::after {
-    right: 0;
-    background: var(--album-spine-in);
-  }
-
-  :is(.album-spread, .album-leaf__face)[data-count='2']
-    > .album-plate:nth-of-type(2)
-    .album-plate__media::after {
-    left: 0;
-    background: var(--album-spine-out);
   }
 
   /* 页的可见状态 */
@@ -358,18 +366,20 @@ const frameCount = frameTotal ?? frames.length;
     margin: 0;
     display: grid;
     min-height: 0;
+    padding: var(--album-page-pad);
+    background: var(--paper);
   }
 
-  /* 每页是一张纸：纸色页框，照片按比例最大程度放进版心（不裁切） */
+  /* 照片贴在自己的页纸上：不另加投影、不留内衬，中缝暗部只压照片本身 */
   .album-plate__media {
     position: relative;
     height: 100%;
     display: grid;
     place-items: center;
-    padding: var(--album-page-pad);
+    padding: 0;
     overflow: hidden;
-    box-shadow: var(--shadow-plate);
-    background: var(--paper);
+    background: none;
+    box-shadow: none;
   }
 
   .album-plate__media > img {
@@ -464,28 +474,32 @@ const frameCount = frameTotal ?? frames.length;
       width: 100%;
       max-height: none;
     }
-    /* 窄屏一页一张，没有对页中缝 */
-    .album-plate__media::after {
+    /* 窄屏一页一张，不要对页书脊 */
+    :is(.album-spread, .album-leaf__face)::after {
       display: none;
     }
-    /* 窄屏舞台吃掉整行，翻页键浮到舞台顶部两角（不占照片宽度） */
+    /* 窄屏：舞台吃满一行，翻页键落到照片下方一行，不压照片 */
     .album-frame {
       grid-template-columns: minmax(0, 1fr);
       align-items: start;
     }
     .album-stage {
       grid-area: 1 / 1;
+      box-shadow: none;
     }
-    .album-nav {
-      position: absolute;
-      top: var(--gap-stack-xs);
-      z-index: 6;
+    .album-navbar {
+      display: flex;
+      grid-area: 2 / 1;
+      align-items: center;
+      justify-content: center;
+      gap: var(--gap-inline);
+      margin-top: var(--gap-stack-sm);
     }
-    .album-nav--prev {
-      left: var(--gap-stack-xs);
-    }
-    .album-nav--next {
-      right: var(--gap-stack-xs);
+    /* 窄屏不套页框：照片自己撑满，不带纸边与页投影 */
+    .album-plate {
+      padding: 0;
+      background: none;
+      box-shadow: none;
     }
     /* 无 JS 降级：首帧只有第一张可见，其余收起（避免两张叠在一起） */
     .album[data-ready='false'] .album-plate[data-frame]:not([data-frame='0']) {
