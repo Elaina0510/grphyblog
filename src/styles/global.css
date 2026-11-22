@@ -135,6 +135,8 @@
   --dur-fast: 0.2s; /* 细线/颜色微反馈 */
   --dur-fade: 0.35s; /* 灯箱开合 */
   --album-turn-shift: 12px; /* 画册翻页入场位移 */
+  --dur-page-turn: 0.9s; /* 摄影集书页翻过去（匀速可见，不用快出曲线） */
+  --album-spread-perspective: 2400px; /* 翻页 3D 景深 */
   --rise-y: 26px; /* rise 起始位移 */
   --rise-clip: 12%; /* rise 起始裁切 */
   --sheet-y: 18px; /* 拍摄单起始位移 */
