@@ -413,10 +413,11 @@ const frameCount = frameTotal ?? frames.length;
     scrollbar-width: thin;
   }
 
+  /* 帧窗格：等高不等宽，按原图比例裁成竖条 —— 竖图不会被方形框裁掉上下 */
   .album-strip__item {
     flex: 0 0 auto;
-    width: var(--album-strip-h);
     height: var(--album-strip-h);
+    width: auto;
     padding: 0;
     overflow: hidden;
     border: var(--rule-w) solid var(--rule);
@@ -440,9 +441,8 @@ const frameCount = frameTotal ?? frames.length;
 
   .album-strip__item > img {
     display: block;
-    width: 100%;
     height: 100%;
-    object-fit: cover;
+    width: auto;
   }
 
   @media (max-width: 900px) {
@@ -459,6 +459,7 @@ const frameCount = frameTotal ?? frames.length;
       grid-area: 1 / 1;
       position: relative;
       width: 100%;
+      transition: opacity var(--dur-fast) var(--ease);
     }
     /* 书叶两面在竖屏也只有一张图，取消宽屏的等高版心 */
     .album-leaf__face {
@@ -676,7 +677,9 @@ const frameCount = frameTotal ?? frames.length;
         const to = pages[target];
         if (!from || !to || !leaf) return;
 
-        if (reduce) {
+        // 窄屏一页一张，3D 书页翻转会把照片压成窄条（透视压缩），
+        // 读者看到的是「照片没显示全」。窄屏直接落位，不做翻页动画。
+        if (reduce || isNarrow()) {
           stateOf(from, 'hidden');
           stateOf(to, 'active');
           index = target;
