@@ -82,21 +82,27 @@ test.describe('系列详情 /series/daily-frames/ · 摄影集画册', () => {
         alt: el.getAttribute('alt'),
         loading: el.getAttribute('loading'),
         priority: el.getAttribute('fetchpriority'),
+        src: el.getAttribute('src') ?? '',
       })),
     );
     expect(imgs.length).toBe(sidecar.length);
-    let eager = 0;
     let high = 0;
     for (const im of imgs) {
       expect(im.w, '缺显式宽度').toBeGreaterThan(0);
       expect(im.h, '缺显式高度').toBeGreaterThan(0);
       expect(im.alt, '缺 alt').not.toBeNull();
-      if (im.loading === 'eager') eager += 1;
-      else expect(im.loading).toBe('lazy');
+      // 画册流内全部 eager：800px 缩略图很轻，避免叠页懒加载导致翻到才解码、看着像没加载
+      expect(im.loading, '画册图应全部 eager').toBe('eager');
+      // 用缩略图（尺寸与 sidecar thumbWidth 同口径，远小于展示大图 2560）
+      expect(im.w, '画册该用缩略图宽，不是展示大图宽').toBeLessThanOrEqual(800);
       if (im.priority === 'high') high += 1;
     }
-    expect(eager, '只允许首屏 LCP 那一张 eager').toBeLessThanOrEqual(1);
     expect(high, '首屏 LCP 那一张应是 high').toBeLessThanOrEqual(1);
+    // 宽高与 sidecar 缩略图真值一致
+    imgs.forEach((im, i) => {
+      expect(im.w).toBe(sidecar[i].thumbWidth);
+      expect(im.h).toBe(sidecar[i].thumbHeight);
+    });
   });
 
   test('翻页控件：左右按钮 / 键盘 / 到头就停 / aria-live 播报', async ({ page }) => {

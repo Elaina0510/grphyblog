@@ -89,7 +89,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
                   width={item.width}
                   height={item.height}
                   alt={item.alt}
-                  loading={pageIndex === 0 && within === 0 ? 'eager' : 'lazy'}
+                  loading="eager"
                   decoding="async"
                   fetchpriority={pageIndex === 0 && within === 0 ? 'high' : undefined}
                 />

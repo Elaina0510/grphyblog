@@ -105,9 +105,11 @@ for (const id of photoIds) {
   }
   frames.push({
     id,
-    src: serveUrl(POOL_DIR, photo.file),
-    width: photo.width,
-    height: photo.height,
+    // 画册流内用 800px 缩略图：显示宽才 ~505px，够清晰且能秒开；
+    // 展示大图（photo.file, 2560px）留给放大场景，放这里会让堆叠的懒加载页翻到时才解码、看着像没加载。
+    src: serveUrl(POOL_DIR, photo.thumb),
+    width: photo.thumbWidth,
+    height: photo.thumbHeight,
     alt: `${entry.data.title} · 第 ${frames.length + 1} 帧`,
     exif: photo.exif,
   });
