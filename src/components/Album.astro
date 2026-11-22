@@ -207,17 +207,17 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     z-index: 2;
   }
 
-  /* 翻页：旧页翻走（ease-out 让中段可见），新页是实底摊在下面 */
+  /* 翻页：旧页翻走。ease-in-out 慢起慢停，配合 1.3s 时长，像手指轻推书页自然落下 */
   .album[data-ready='true'] [data-page][data-state='out-next'] {
     visibility: visible;
     z-index: 3;
-    animation: album-turn-next var(--dur-page-turn) ease-out both;
+    animation: album-turn-next var(--dur-page-turn) ease-in-out both;
   }
 
   .album[data-ready='true'] [data-page][data-state='out-prev'] {
     visibility: visible;
     z-index: 3;
-    animation: album-turn-prev var(--dur-page-turn) ease-out both;
+    animation: album-turn-prev var(--dur-page-turn) ease-in-out both;
   }
 
   .album[data-ready='true'] [data-page][data-state='in'] {
@@ -241,7 +241,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   }
 
   .album[data-ready='true'] [data-page][data-state='out-next']::after {
-    animation: album-shade var(--dur-page-turn) ease-out both;
+    animation: album-shade var(--dur-page-turn) ease-in both;
   }
 
   @keyframes album-shade {
@@ -249,7 +249,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
       opacity: 0;
     }
     to {
-      opacity: 0.5;
+      opacity: 0.42;
     }
   }
 
@@ -279,8 +279,11 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
       transform: rotateY(0);
       opacity: 1;
     }
+    60% {
+      opacity: 1;
+    }
     to {
-      transform: rotateY(-95deg);
+      transform: rotateY(-88deg);
       opacity: 0;
     }
   }
@@ -288,7 +291,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   /* 往前翻：上一页从左侧翻回来盖住当前页 */
   @keyframes album-turn-prev {
     from {
-      transform: rotateY(90deg);
+      transform: rotateY(86deg);
       opacity: 0;
     }
     to {
