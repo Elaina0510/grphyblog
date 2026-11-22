@@ -73,10 +73,16 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
           data-index={pageIndex}
           data-active={pageIndex === 0 ? 'true' : 'false'}
           data-state={pageIndex === 0 ? 'active' : 'hidden'}
+          data-page="spread"
           aria-hidden={pageIndex === 0 ? undefined : 'true'}
         >
           {spread.photos.map((item, within) => (
-            <figure class="album-plate">
+            <figure
+              class="album-plate"
+              data-page="plate"
+              data-frame={pageIndex * 2 + within}
+              aria-hidden={pageIndex === 0 && within === 0 ? undefined : 'true'}
+            >
               <div class="album-plate__media">
                 <img
                   src={item.src}
@@ -170,14 +176,15 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     cursor: default;
   }
 
-  /* 舞台：所有对页叠在同一个网格单元里，翻页时旧页绕书脊 3D 翻走，露出下面的新页。 */
+  /* 舞台：所有页叠在同一个网格单元里，翻页时旧页绕书脊 3D 翻走，露出下面的新页。 */
   .album-stage {
     display: grid;
     perspective: var(--album-spread-perspective);
   }
 
+  /* 宽屏：对页 .album-spread 是翻页单位（两图并排） */
   .album-spread {
-    grid-area: 1 / 1; /* 全部对页占同一格，靠状态而非占位切换 */
+    grid-area: 1 / 1;
     position: relative;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -187,36 +194,36 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     backface-visibility: hidden;
   }
 
-  /* 无 JS / 初始：只有 active 那页可见，其余收起（不占位、不可聚焦） */
-  .album-spread[data-state='hidden'] {
+  /* 页的可见状态：只作用于带 data-state 的当前页单位；中性页无此属性自然显示 */
+  [data-page][data-state='hidden'] {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
   }
 
-  .album-spread[data-state='active'] {
+  [data-page][data-state='active'] {
     visibility: visible;
     opacity: 1;
     z-index: 2;
   }
 
-  /* 翻页：旧页翻走。用 ease-in-out 让中段匀速可见（--ease 是快出曲线，0.2s 就走完，看不见） */
-  .album[data-ready='true'] .album-spread[data-state='out-next'] {
+  /* 翻页：旧页翻走（ease-out 让中段可见），新页是实底摊在下面 */
+  .album[data-ready='true'] [data-page][data-state='out-next'] {
     visibility: visible;
     z-index: 3;
     animation: album-turn-next var(--dur-page-turn) ease-out both;
   }
 
-  .album[data-ready='true'] .album-spread[data-state='out-prev'] {
+  .album[data-ready='true'] [data-page][data-state='out-prev'] {
     visibility: visible;
     z-index: 3;
     animation: album-turn-prev var(--dur-page-turn) ease-out both;
   }
 
-  .album[data-ready='true'] .album-spread[data-state='in'] {
+  .album[data-ready='true'] [data-page][data-state='in'] {
     visibility: visible;
     z-index: 1;
-    opacity: 1; /* 新页是实底，一直摊在下面，由旧页翻走把它露出来 */
+    opacity: 1;
   }
 
   .album-plate {
@@ -224,7 +231,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   }
 
   /* 翻页时盖在转动页上的阴影：随翻页动画由浅入深，像纸背压出的暗面 */
-  .album-spread::after {
+  [data-page]::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -233,7 +240,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     pointer-events: none;
   }
 
-  .album[data-ready='true'] .album-spread[data-state='out-next']::after {
+  .album[data-ready='true'] [data-page][data-state='out-next']::after {
     animation: album-shade var(--dur-page-turn) ease-out both;
   }
 
@@ -291,16 +298,27 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   }
 
   @media (max-width: 900px) {
-    .album-spread,
-    .album[data-ready='true'] .album-spread[data-active='true'] {
-      grid-template-columns: 1fr;
+    /* 竖屏：spread 不再是对页容器，让每张 .album-plate 直接成为翻页单位 */
+    .album-spread {
+      display: contents;
+    }
+    .album-plate[data-page] {
+      grid-area: 1 / 1;
+      position: relative;
+      transform-origin: left center;
+      backface-visibility: hidden;
+      width: 100%;
+    }
+    /* 无 JS 降级：首帧只有第一张可见，其余收起（避免两张叠在一起） */
+    .album[data-ready='false'] .album-plate[data-frame]:not([data-frame='0']) {
+      visibility: hidden;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .album[data-ready='true'] .album-spread[data-state='out-next'],
-    .album[data-ready='true'] .album-spread[data-state='out-prev'],
-    .album[data-ready='true'] .album-spread[data-state='in'] {
+    .album[data-ready='true'] [data-page][data-state='out-next'],
+    .album[data-ready='true'] [data-page][data-state='out-prev'],
+    .album[data-ready='true'] [data-page][data-state='in'] {
       animation: none;
     }
   }
@@ -312,15 +330,20 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   const root = document.querySelector<HTMLElement>('[data-album]');
   if (root) {
     const spreads = Array.from(root.querySelectorAll<HTMLElement>('[data-album-spread]'));
-    const total = spreads.length;
+    const plates = Array.from(root.querySelectorAll<HTMLElement>('[data-page="plate"]'));
     const prev = root.querySelector<HTMLButtonElement>('[data-album-prev]');
     const next = root.querySelector<HTMLButtonElement>('[data-album-next]');
     const chip = root.querySelector<HTMLElement>('[data-album-chip]');
     const live = root.querySelector<HTMLElement>('[data-album-live]');
     const stage = root.querySelector<HTMLElement>('[data-album-stage]');
     const hint = root.querySelector<HTMLElement>('.album-hint');
+    const frameTotal = plates.length;
 
-    if (total > 0 && prev && next && chip && live && stage) {
+    if (frameTotal > 0 && prev && next && chip && live && stage) {
+      // 宽屏一页两张对页；窄屏（≤900px）一页一张。两种模式的页单位不同。
+      const narrowMq = typeof matchMedia === 'function' ? matchMedia('(max-width: 900px)') : null;
+      const isNarrow = (): boolean => narrowMq?.matches ?? window.innerWidth <= 900;
+      let pages: HTMLElement[] = isNarrow() ? plates : spreads;
       let index = 0;
       let animating = false;
       let turnToken = 0;
@@ -335,55 +358,83 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         return Number.isFinite(n) ? (/ms$/.test(raw) ? n : n * 1000) : 700;
       })();
 
-      /** 把一页设成某状态，并同步 aria-hidden。 */
+      /** 把一页设成某状态，并同步 aria-hidden（spread 模式要连带它内部的 plate）。 */
       function stateOf(s: HTMLElement, state: string): void {
         s.dataset.state = state;
         s.dataset.active = String(state === 'active' || state === 'in');
-        if (state === 'active' || state === 'in') s.removeAttribute('aria-hidden');
+        const visible = state === 'active' || state === 'in';
+        if (visible) s.removeAttribute('aria-hidden');
         else s.setAttribute('aria-hidden', 'true');
+        // spread 模式下，内部 plate 的 aria-hidden 跟着 spread；plate 模式下各自独立。
+        if (s.dataset.page === 'spread') {
+          s.querySelectorAll<HTMLElement>('[data-page="plate"]').forEach((p) => {
+            if (visible) p.removeAttribute('aria-hidden');
+            else p.setAttribute('aria-hidden', 'true');
+          });
+        }
       }
 
       function syncChrome(): void {
-        chip!.textContent = spreadLabel(index, total);
-        live!.textContent = announceSpread(index, total);
+        const count = pages.length;
+        chip!.textContent = spreadLabel(index, count);
+        live!.textContent = announceSpread(index, count);
         if (hint) {
           const base = hint.textContent ?? '';
-          hint.textContent = base.replace(/\d+\s*\/\s*\d+\s*$/, spreadLabel(index, total));
+          hint.textContent = base.replace(/\d+\s*\/\s*\d+\s*$/, spreadLabel(index, count));
         }
         prev!.setAttribute('aria-disabled', String(index <= 0));
-        next!.setAttribute('aria-disabled', String(index >= total - 1));
+        next!.setAttribute('aria-disabled', String(index >= count - 1));
         root!.dataset.index = String(index);
+        root!.dataset.total = String(count);
+        root!.dataset.mode = isNarrow() ? 'single' : 'spread';
         root!.dataset.ready = 'true';
       }
 
-      /** 首帧：直接落位，无动画。 */
+      /** 首帧 / 跳页：直接落位，无动画。 */
       function paint(): void {
-        spreads.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
+        pages.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
+        // 非当前模式的页单位回到中性（无 data-state），由 CSS 自然显示/隐藏
+        const others = isNarrow() ? spreads : plates;
+        others.forEach((s) => {
+          delete s.dataset.state;
+          delete s.dataset.active;
+          s.setAttribute('aria-hidden', 'true');
+        });
         syncChrome();
       }
 
-      /**
-       * 翻页：旧页绕书脊翻走，新页从底层露出；动画结束后落定状态。
-       * delta>0 往后翻（旧页向左翻走），delta<0 往前翻（上一页从左边翻回来）。
-       */
-      /** 立即结束当前动画并落定到已锁定的目标页（供连续翻页时抢占）。 */
+      /** 切换宽窄模式：尽力保留阅读进度（按当前首帧映射到新模式的页）。 */
+      function relayout(): void {
+        const wasNarrow = pages === plates;
+        const nowNarrow = isNarrow();
+        if (wasNarrow === nowNarrow) return;
+        settle();
+        // 当前正在看的第一帧号 → 新模式里的页序号
+        const firstFrame = wasNarrow
+          ? Number(pages[index]?.dataset.frame ?? index)
+          : index * 2;
+        pages = nowNarrow ? plates : spreads;
+        index = clampSpread(nowNarrow ? firstFrame : Math.floor(firstFrame / 2), pages.length);
+        paint();
+      }
+
+      /** 立即结束当前动画并落定（供连续翻页 / 换模式抢占）。 */
       function settle(): void {
-        turnToken += 1; // 令旧回调失效
+        turnToken += 1;
         if (!animating) return;
-        spreads.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
+        pages.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
         animating = false;
       }
 
       function go(delta: number): void {
-        settle(); // 连点/连按：先把上一次动画落定，再翻新的，不丢操作
-        const target = clampSpread(index + delta, total);
+        settle();
+        const target = clampSpread(index + delta, pages.length);
         if (target === index) return;
-        const from = spreads[index];
-        const to = spreads[target];
+        const from = pages[index];
+        const to = pages[target];
         if (!from || !to) return;
 
         if (reduce) {
-          // 直切，无动画
           stateOf(from, 'hidden');
           stateOf(to, 'active');
           index = target;
@@ -393,14 +444,13 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
 
         animating = true;
         const myToken = turnToken;
-        // 新页先在底层露出，旧页在其上翻走
         stateOf(to, 'in');
         stateOf(from, delta > 0 ? 'out-next' : 'out-prev');
         index = target;
         syncChrome();
 
         window.setTimeout(() => {
-          if (myToken !== turnToken) return; // 已被后续翻页抢占，别落错状态
+          if (myToken !== turnToken) return;
           stateOf(from, 'hidden');
           stateOf(to, 'active');
           animating = false;
@@ -409,10 +459,10 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
 
       prev.addEventListener('click', () => go(-1));
       next.addEventListener('click', () => go(1));
+      if (typeof narrowMq?.addEventListener === 'function') narrowMq.addEventListener('change', relayout);
+      else window.addEventListener('resize', relayout);
 
       document.addEventListener('keydown', (event) => {
-        // 只在本画册获得焦点（或焦点在其内部按钮）时接管方向键，
-        // 免得抢了全站滚动/其他交互；读者点进画册后方向键就是翻页。
         const active = document.activeElement;
         if (active !== root && !root.contains(active)) return;
         switch (event.key) {
@@ -433,7 +483,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
           case 'End':
             event.preventDefault();
             settle();
-            index = total - 1;
+            index = pages.length - 1;
             paint();
             break;
           default:
@@ -452,7 +502,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         const dx = event.clientX - gesture.x;
         const dy = event.clientY - gesture.y;
         gesture = null;
-        if (Math.abs(dx) < Math.abs(dy)) return; // 竖滑不算翻页
+        if (Math.abs(dx) < Math.abs(dy)) return;
         const threshold = Math.max(40, window.innerWidth * 0.08);
         if (dx <= -threshold) go(1);
         else if (dx >= threshold) go(-1);

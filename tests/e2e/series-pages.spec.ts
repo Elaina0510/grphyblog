@@ -158,11 +158,13 @@ test.describe('移动端 375 降级', () => {
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
-    const cols = await page
+    // 窄屏：每张照片是一页（.album-plate 是翻页单位），spread 用 display:contents 让位
+    await expect(page.locator('[data-album]')).toHaveAttribute('data-mode', 'single');
+    const spreadDisplay = await page
       .locator('[data-album-spread]')
       .first()
-      .evaluate((el) => getComputedStyle(el).gridTemplateColumns);
-    expect(cols, '窄屏对页应归单列').not.toContain(' ');
+      .evaluate((el) => getComputedStyle(el).display);
+    expect(spreadDisplay, '窄屏 spread 应退成 contents').toBe('contents');
 
     const plateW = await page
       .locator('[data-album-spread] img')

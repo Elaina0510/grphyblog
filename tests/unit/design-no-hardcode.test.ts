@@ -41,7 +41,10 @@ function stripComments(source: string): string {
  * 与 posts-pages.test.ts 的 dropMediaConditions 同口径：比较前把条件体抹掉。
  */
 function dropMediaConditions(code: string): string {
-  return code.replace(/@media[^{]*/g, '@media{');
+  return code
+    .replace(/@media[^{]*/g, '@media{')
+    // JS 里的 matchMedia('(max-width: 900px)') 也是同一处断点字面量容身（CSS 条件不能在 JS 用 var()）
+    .replace(/matchMedia\((['"])[^'"]*\1\)/g, 'matchMedia(BREAKPOINT)');
 }
 
 /** 只取 <style> 块的内容（组件的结构 CSS）。 */
