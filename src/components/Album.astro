@@ -243,6 +243,21 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     transform: rotateY(180deg); /* 背面预先翻好，等叶子整体翻过来时正对读者 */
   }
 
+  /* 背面（新页）随翻页渐渐显出，翻到后半段已经清晰，避免落定瞬间才蹦出来 */
+  .album-leaf[data-dir='next'][data-turning='true'] .album-leaf__back {
+    animation: leaf-back-in var(--dur-page-turn) ease-in both;
+  }
+
+  @keyframes leaf-back-in {
+    0%,
+    40% {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   /* 往后翻：叶子从 0° 转到 -180°，背面（新页）随之翻到正面 */
   .album-leaf[data-dir='next'][data-turning='true'] {
     animation: leaf-next var(--dur-page-turn) ease-in-out both;
@@ -480,12 +495,22 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         index = target;
         syncChrome();
 
-        window.setTimeout(() => {
-          if (myToken !== turnToken) return;
-          leaf.dataset.turning = 'false';
-          pages.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
+        /**
+         * 落定：撤掉书叶、显示目标真实页。用 animationend 精确对齐动画结束，
+         * 不用 setTimeout 猜时间（猜早了会漏出翻页中的背面，猜晚了翻完会空一帧）。
+         * 另留一个略宽的兜底 timer，防止 animationend 因异常没触发时卡死。
+         */
+        function land(event?: AnimationEvent): void {
+          // 只认书叶自身的翻页动画，忽略子元素冒泡上来的 animationend
+          if (event && event.target !== leaf) return;
+          if (myToken !== turnToken || !animating) return;
           animating = false;
-        }, turnMs + 30);
+          leaf!.dataset.turning = 'false';
+          leaf!.removeEventListener('animationend', land);
+          pages.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
+        }
+        leaf.addEventListener('animationend', land, { once: false });
+        window.setTimeout(land, turnMs + 200);
       }
 
       prev.addEventListener('click', () => go(-1));
