@@ -58,15 +58,19 @@ describe('hasNoteContent · 有可见正文 → true', () => {
 });
 
 describe('hasNoteContent · 直接对仓库真实内容取证（锁死页面会怎样渲）', () => {
-  it('city-lights 有手记正文 → 详情页会渲染手记块', () => {
-    expect(hasNoteContent(bodyOf('src/content/series/city-lights/index.md'))).toBe(true);
+  // 现存系列的正文都只有导入脚本留下的 HTML 注释、没有可见手记文字，
+  // 所以这里直接喂一段真散文验证「有正文→渲染」的判定（不再依赖已被删除的旧系列文件）。
+  it('真散文正文 → 详情页会渲染手记块', () => {
+    expect(
+      hasNoteContent('第一次把城市入夜当作一个系列来拍。灯亮起来的那一刻，只剩下光的层次。'),
+    ).toBe(true);
   });
 
   it('daily-frames 正文只有一句 HTML 注释 → 判为无手记（其发布后不会留空壳）', () => {
     expect(hasNoteContent(bodyOf('src/content/series/daily-frames/index.md'))).toBe(false);
   });
 
-  it('wip-empty 正文为空 → 判为无手记（详情页不渲染手记块，由 §4 测试点 4 的 e2e 端到端复核）', () => {
-    expect(hasNoteContent(bodyOf('src/content/series/wip-empty/index.md'))).toBe(false);
+  it('street-notes 正文只有一句 HTML 注释 → 判为无手记（详情页不渲染手记块）', () => {
+    expect(hasNoteContent(bodyOf('src/content/series/street-notes/index.md'))).toBe(false);
   });
 });

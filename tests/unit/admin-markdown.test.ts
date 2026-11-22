@@ -121,8 +121,8 @@ describe('parseEntryMarkdown · 往返', () => {
 
   it('真实条目：解析 → 重新拼装 → 再解析，字段稳定', () => {
     for (const rel of [
-      'src/content/series/city-lights/index.md',
-      'src/content/series/wip-empty/index.md',
+      'src/content/series/street-notes/index.md',
+      'src/content/series/daily-frames/index.md',
       'src/content/posts/2026-09-21-morning-fog.md',
       'src/content/posts/2026-07-02-alley-light.md',
     ]) {

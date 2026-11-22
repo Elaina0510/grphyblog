@@ -709,8 +709,8 @@ test.describe('移动端 375 · 触摸目标与手势（桌面模拟）', () => 
 /* ============================ 五、负向与边界 ============================ */
 
 test.describe('不挂灯箱的页面 / 无 JS 降级', () => {
-  test('空册系列与纯文字随笔：既无图版、无岛、也无外壳', async ({ page }) => {
-    for (const path of ['/series/wip-empty/', '/posts/2026-07-02-alley-light/']) {
+  test('纯文字随笔：既无图版、无岛、也无外壳', async ({ page }) => {
+    for (const path of ['/posts/2026-07-02-alley-light/']) {
       await page.goto(path);
       await expect(page.locator('figure[data-lightbox]')).toHaveCount(0);
       await expect(page.locator(SHELL)).toHaveCount(0);

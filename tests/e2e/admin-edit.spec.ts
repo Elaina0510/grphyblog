@@ -1,9 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { expect, test, type Page } from '@playwright/test';
 
-import { installGitHubMock, seedToken, SERIES_MD, POST_MD, type MockHandle } from './helpers/admin-mock';
+import { installGitHubMock, seedToken, SERIES_MD, POST_MD, MOCK_SERIES_MD, type MockHandle } from './helpers/admin-mock';
 
 // =============================================================================
 // E4/E5 · 编辑页与保存（admin-v2.md「字段表单 + 照片勾选网格 + 拖拽排序 + 富文本」
@@ -22,14 +19,12 @@ import { installGitHubMock, seedToken, SERIES_MD, POST_MD, type MockHandle } fro
 let mock: MockHandle;
 
 /**
- * 从真实内容文件取标题。
- * 标题是用户在后台随手会改的东西（「夜光 · 城市666」→「…nhnhnhn」已经改过两次），
- * 断言写死具体字样会让测试因为「内容变了」而红，那是假警报，不是回归。
+ * 后台测试的系列标题取自 mock 的合成 md（不受真实内容增删影响）。
+ * 标题是用户在后台随手会改的东西，断言写死具体字样会让测试因为「内容变了」而红。
  */
-function titleOf(rel: string): string {
-  const text = readFileSync(resolve(process.cwd(), rel), 'utf8');
-  const m = /^title:\s*(.+?)\s*$/m.exec(text.replace(/\r?\n/g, '\n'));
-  if (!m) throw new Error(`${rel} 里没有 title`);
+function titleOf(_rel: string): string {
+  const m = /^title:\s*(.+?)\s*$/m.exec(MOCK_SERIES_MD);
+  if (!m) throw new Error('mock 系列 md 里没有 title');
   return m[1].replace(/^['"]|['"]$/g, '');
 }
 

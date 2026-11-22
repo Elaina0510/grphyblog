@@ -54,7 +54,7 @@ test.describe('① 删除条目', () => {
     await expect(page.locator('[data-testid="edit-view"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="entry-list"]')).toBeVisible();
     await expect(
-      page.locator('[data-testid="entry-row"][data-path="src/content/series/city-lights/index.md"]'),
+      page.locator(`[data-testid="entry-row"][data-path="${SERIES_MD}"]`),
     ).toHaveCount(0);
   });
 

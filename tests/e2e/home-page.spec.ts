@@ -26,9 +26,11 @@ test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
     // 草稿隔离（硬约束 6）：「雾起的那个早上」仍是 draft: true，任何形式都不该出现。
     // 注：daily-frames 已在 2026-10-05 由后台从草稿发布（draft: false），不再是草稿样本。
     expect(html).not.toContain('雾起的那个早上');
-    // 已发布：city-lights、daily-frames 系列与晨雾随笔应出现
-    expect(html).toContain('city-lights');
-    expect(html).toContain('夜光');
+    // 已发布系列（daily-frames / street-notes）与晨雾随笔应出现；
+    // 旧 city-lights 已被作者删除，不该再出现。
+    expect(html).toContain('daily-frames');
+    expect(html).toContain('街头随拍');
+    expect(html).not.toContain('city-lights');
     expect(html).toContain('晨雾里的第一束光');
   });
 
@@ -64,24 +66,25 @@ test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
   test('系列卡片张数 == 该系列 photos[] 的帧数（池化后口径）', async ({ page }) => {
     await page.goto('/');
     // 照片池化后张数口径 = frontmatter photos.length（帧序列由池 sidecar 提供真宽高）
-    const expected = seriesPhotos('city-lights').length; // 当前 = 2
+    const expected = seriesPhotos('daily-frames').length;
     expect(expected).toBeGreaterThan(0);
 
-    const cityCard = page
+    const card = page
       .locator('section[aria-label="最新系列"] .home-entry')
-      .filter({ hasText: '夜光' })
+      .filter({ hasText: '日常帧' })
       .first();
-    await expect(cityCard).toContainText(`${expected} 帧`);
+    await expect(card).toContainText(`${expected} 帧`);
   });
 
-  test('精选入口：页码片帧号 + 链到照片所属系列的详情（D4：按照片反查归属条目）', async ({
-    page,
-  }) => {
+  test('精选入口：页码片帧号 + 图无归属系列时退化为非链接卡（D4 反查）', async ({ page }) => {
     await page.goto('/');
     const featured = page.locator('section[aria-label="精选"]');
     await expect(featured.locator('.frame-chip').first()).toHaveText(/01 \/ 02/);
-    const href = await featured.locator('a.home-entry').first().getAttribute('href');
-    expect(href).toBe('/series/city-lights/');
+    // 精选图 night-01/02 原属 city-lights，该系列已删除 → 反查不到归属条目 → 卡片无 href（非链接）
+    const featuredLinks = await featured.locator('a.home-entry[href]').count();
+    expect(featuredLinks).toBe(0);
+    // 但卡片本身还在（图片不缺失）
+    await expect(featured.locator('a.home-entry')).toHaveCount(2);
   });
 
   test('除导航/内容链接外无意外链接（尤其不链向 /visual-demo）', async ({ page }) => {
@@ -98,7 +101,6 @@ test.describe('首页 · 结构与图片属性（桌面 1280）', () => {
       '/series/',
       '/posts/',
       '/about/',
-      '/series/city-lights/',
       '/posts/2026-09-21-morning-fog/',
     ]);
     for (const h of distinct) {

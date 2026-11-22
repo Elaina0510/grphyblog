@@ -38,7 +38,36 @@ export function sidecarWithPending(): Array<Record<string, unknown>> {
   return entries;
 }
 
-export const SERIES_MD = 'src/content/series/city-lights/index.md';
+export const SERIES_MD = 'src/content/series/street-notes/index.md';
+
+/**
+ * admin e2e 专用的合成系列 md：复刻旧「夜光 · 城市」的 2 帧形态。
+ *
+ * 为什么不用真实 street-notes 文件：它是 75 帧大册，且内容会被作者随时增删（2026-11-21
+ * 就删掉了 city-lights / wip-empty 两个系列），拿真实文件当编辑页测试样本会让断言随内容漂移。
+ * 后台编辑页测的是「字段回填 / 勾选 / 排序 / 保存」的机械行为，用固定的 2 帧样本最稳。
+ */
+export const MOCK_SERIES_TITLE = '夜光 · 城市';
+export const MOCK_SERIES_MD = [
+  '---',
+  `title: ${MOCK_SERIES_TITLE}`,
+  'date: 2026-09-20',
+  'cover: night-02.webp',
+  'tags:',
+  '  - 城市',
+  '  - 夜景',
+  '  - 风光',
+  'order: 3',
+  'draft: false',
+  'photos:',
+  '  - night-01.webp',
+  '  - night-02.webp',
+  '---',
+  '',
+  '第一次把「城市入夜」当作一个系列来拍。灯亮起来的那一刻，只剩下光的层次。',
+  '',
+].join('\r\n');
+
 export const POST_MD = 'src/content/posts/2026-09-21-morning-fog.md';
 
 /** 默认的文件表：三个真文件 + 池 sidecar（可在用例里覆盖）。 */
@@ -47,7 +76,7 @@ function defaultFiles(sidecar: Array<Record<string, unknown>>): Record<string, s
     'src/content/pool/photos.meta.json': `${JSON.stringify(sidecar, null, 2)}\n`,
     // 首页精选帧从 site.json.featured.photos 读；mock 里放真文件的当前值。
     'src/data/site.json': readFileSync(resolve(ROOT, 'src/data/site.json'), 'utf8'),
-    [SERIES_MD]: readFileSync(resolve(ROOT, SERIES_MD), 'utf8'),
+    [SERIES_MD]: MOCK_SERIES_MD,
     [POST_MD]: readFileSync(resolve(ROOT, POST_MD), 'utf8'),
     'src/content/posts/2026-07-02-alley-light.md': readFileSync(
       resolve(ROOT, 'src/content/posts/2026-07-02-alley-light.md'),
@@ -56,10 +85,10 @@ function defaultFiles(sidecar: Array<Record<string, unknown>>): Record<string, s
   };
 }
 
-/** 默认目录表：系列 2 个（daily-frames 故意没有 index.md，验证 404 跳过），随笔 2 个。 */
+/** 默认目录表：系列 2 个（street-notes 有 index.md；daily-frames 故意没有，验证 404 跳过），随笔 2 个。 */
 const DEFAULT_DIRS: Record<string, Array<Record<string, unknown>>> = {
   'src/content/series': [
-    { name: 'city-lights', path: 'src/content/series/city-lights', type: 'dir', sha: 'dir-city', size: 0 },
+    { name: 'street-notes', path: 'src/content/series/street-notes', type: 'dir', sha: 'dir-street', size: 0 },
     { name: 'daily-frames', path: 'src/content/series/daily-frames', type: 'dir', sha: 'dir-daily', size: 0 },
   ],
   'src/content/posts': [

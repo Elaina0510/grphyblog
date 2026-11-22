@@ -30,7 +30,7 @@ import {
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
-/** 仓库里真实的条目 md（4 系列 + 3 随笔）。 */
+/** 仓库里真实的条目 md（现存 2 系列 + 3 随笔）。 */
 function realEntries(): string[] {
   const out: string[] = [];
   const seriesDir = resolve(ROOT, 'src/content/series');
@@ -231,8 +231,8 @@ describe('serializeFrontmatter · 与 js-yaml 交叉验证', () => {
 describe('真实条目回归：解析结果与 js-yaml 一致，且能无损还原', () => {
   const files = realEntries();
 
-  it('仓库里有 7 个条目可测（4 系列 + 3 随笔）', () => {
-    expect(files.length).toBe(7);
+  it('仓库里有 5 个条目可测（现存 2 系列 + 3 随笔）', () => {
+    expect(files.length).toBe(5);
   });
 
   it.each(files)('%s', (file) => {
@@ -262,7 +262,7 @@ describe('真实条目回归：解析结果与 js-yaml 一致，且能无损还�
   });
 
   it('本来就是块序列写法的条目，重新拼装与原文字节级一致（不制造假 diff）', () => {
-    const source = readFileSync(resolve(ROOT, 'src/content/series/city-lights/index.md'), 'utf8');
+    const source = readFileSync(resolve(ROOT, 'src/content/series/street-notes/index.md'), 'utf8');
     const block = frontmatterBlock(source);
     const { data } = parseFrontmatter(block);
     const rebuilt = serializeFrontmatter(data, [

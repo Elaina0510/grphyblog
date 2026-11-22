@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 
 import { postsSchema, seriesSchema } from '../../src/content/schemas';
-import { installGitHubMock, POST_MD, SERIES_MD, sidecarWithPending } from './helpers/admin-mock';
+import { installGitHubMock, POST_MD, SERIES_MD, MOCK_SERIES_MD, sidecarWithPending } from './helpers/admin-mock';
 
 // ============================================================================
 // 闭环验收：后台保存的 md 真的能被前台渲染（admin-v2.md 验收标准 6/7）
@@ -98,8 +98,7 @@ test.describe('闭环：后台保存 → 前台能渲染', () => {
 
     // 勾一张当前没被引用的池内照片
     const poolIds = poolDisplayIds();
-    const currentPhotos = (parseFrontmatter(readFileSync(resolve(ROOT, SERIES_MD), 'utf8')).photos ??
-      []) as string[];
+    const currentPhotos = (parseFrontmatter(MOCK_SERIES_MD).photos ?? []) as string[];
     const candidate = [...poolIds].find((id) => !currentPhotos.includes(id));
     expect(candidate, '池里应该有一张该系列还没引用的图').toBeTruthy();
 

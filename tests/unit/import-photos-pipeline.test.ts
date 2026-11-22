@@ -639,7 +639,7 @@ describe('脚本产物能被下游 contentImages 解析成可服务 URL（glob �
       expect(resolveContentImage('pool', entry.thumb), `pool/${entry.thumb}`).toBeTypeOf('string');
     }
     const pairs = [
-      ['series', 'city-lights/index.md'],
+      ['series', 'street-notes/index.md'],
       ['posts', '2026-09-21-morning-fog.md'],
       ['series', 'daily-frames/index.md'],
       ['posts', '2026-08-10-foggy-morning.md'],
