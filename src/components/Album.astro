@@ -100,6 +100,13 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         </div>
       ))
     }
+
+    <!-- 翻页盖层：一张双面书叶。正面=当前页，背面=目标页；绕书脊翻过来才露出新页，
+         翻页过程中新页始终被纸背盖住，不会从底下提前显示。运行时由 JS 填充两面内容。 -->
+    <div class="album-leaf" data-album-leaf data-turning="false" data-dir="next" aria-hidden="true">
+      <div class="album-leaf__face album-leaf__front" data-leaf-front></div>
+      <div class="album-leaf__face album-leaf__back" data-leaf-back></div>
+    </div>
   </div>
 
   {
@@ -176,7 +183,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     cursor: default;
   }
 
-  /* 舞台：所有页叠在同一个网格单元里，翻页时旧页绕书脊 3D 翻走，露出下面的新页。 */
+  /* 舞台：所有页叠在同一个网格单元里。翻页时由双面书叶接管，真实页先隐藏。 */
   .album-stage {
     display: grid;
     perspective: var(--album-spread-perspective);
@@ -190,11 +197,9 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--gap-spread);
     align-items: center;
-    transform-origin: left center; /* 书脊在左，像真书一样翻 */
-    backface-visibility: hidden;
   }
 
-  /* 页的可见状态：只作用于带 data-state 的当前页单位；中性页无此属性自然显示 */
+  /* 页的可见状态 */
   [data-page][data-state='hidden'] {
     visibility: hidden;
     opacity: 0;
@@ -204,53 +209,70 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   [data-page][data-state='active'] {
     visibility: visible;
     opacity: 1;
-    z-index: 2;
-  }
-
-  /* 翻页：旧页翻走。ease-in-out 慢起慢停，配合 1.3s 时长，像手指轻推书页自然落下 */
-  .album[data-ready='true'] [data-page][data-state='out-next'] {
-    visibility: visible;
-    z-index: 3;
-    animation: album-turn-next var(--dur-page-turn) ease-in-out both;
-  }
-
-  .album[data-ready='true'] [data-page][data-state='out-prev'] {
-    visibility: visible;
-    z-index: 3;
-    animation: album-turn-prev var(--dur-page-turn) ease-in-out both;
-  }
-
-  .album[data-ready='true'] [data-page][data-state='in'] {
-    visibility: visible;
     z-index: 1;
-    opacity: 1;
+  }
+
+  /* ---- 双面书叶：翻页时盖住舞台，正面当前页 / 背面目标页 ---- */
+  .album-leaf {
+    grid-area: 1 / 1;
+    position: relative;
+    z-index: 5;
+    display: none;
+    width: 100%;
+    transform-style: preserve-3d;
+    transform-origin: left center; /* 书脊在左 */
+  }
+
+  .album-leaf[data-turning='true'] {
+    display: grid;
+  }
+
+  .album-leaf__face {
+    grid-area: 1 / 1; /* 两面叠在同一格，leaf 高度由内容撑起 */
+    /* 内容由 JS 从对应页克隆进来 */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap-spread);
+    align-items: center;
+    backface-visibility: hidden; /* 关键：背面在翻过来之前不可见 */
+    background: var(--paper);
+    box-shadow: var(--shadow-plate);
+  }
+
+  .album-leaf__back {
+    transform: rotateY(180deg); /* 背面预先翻好，等叶子整体翻过来时正对读者 */
+  }
+
+  /* 往后翻：叶子从 0° 转到 -180°，背面（新页）随之翻到正面 */
+  .album-leaf[data-dir='next'][data-turning='true'] {
+    animation: leaf-next var(--dur-page-turn) ease-in-out both;
+  }
+
+  /* 往前翻：上一页从 -180° 翻回 0° */
+  .album-leaf[data-dir='prev'][data-turning='true'] {
+    animation: leaf-prev var(--dur-page-turn) ease-in-out both;
+  }
+
+  @keyframes leaf-next {
+    from {
+      transform: rotateY(0deg);
+    }
+    to {
+      transform: rotateY(-180deg);
+    }
+  }
+
+  @keyframes leaf-prev {
+    from {
+      transform: rotateY(-180deg);
+    }
+    to {
+      transform: rotateY(0deg);
+    }
   }
 
   .album-plate {
     margin: 0;
-  }
-
-  /* 翻页时盖在转动页上的阴影：随翻页动画由浅入深，像纸背压出的暗面 */
-  [data-page]::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--scrim-night);
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .album[data-ready='true'] [data-page][data-state='out-next']::after {
-    animation: album-shade var(--dur-page-turn) ease-in both;
-  }
-
-  @keyframes album-shade {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 0.42;
-    }
   }
 
   .album-plate__media {
@@ -273,33 +295,6 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     margin-top: var(--gap-baseline);
   }
 
-  /* 往后翻：旧页绕书脊向左翻走（正 rotateY 把右半页翻向读者再翻过去） */
-  @keyframes album-turn-next {
-    from {
-      transform: rotateY(0);
-      opacity: 1;
-    }
-    60% {
-      opacity: 1;
-    }
-    to {
-      transform: rotateY(-88deg);
-      opacity: 0;
-    }
-  }
-
-  /* 往前翻：上一页从左侧翻回来盖住当前页 */
-  @keyframes album-turn-prev {
-    from {
-      transform: rotateY(86deg);
-      opacity: 0;
-    }
-    to {
-      transform: rotateY(0);
-      opacity: 1;
-    }
-  }
-
   @media (max-width: 900px) {
     /* 竖屏：spread 不再是对页容器，让每张 .album-plate 直接成为翻页单位 */
     .album-spread {
@@ -308,9 +303,11 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     .album-plate[data-page] {
       grid-area: 1 / 1;
       position: relative;
-      transform-origin: left center;
-      backface-visibility: hidden;
       width: 100%;
+    }
+    /* 书叶两面在竖屏也只有一张图 */
+    .album-leaf__face {
+      grid-template-columns: 1fr;
     }
     /* 无 JS 降级：首帧只有第一张可见，其余收起（避免两张叠在一起） */
     .album[data-ready='false'] .album-plate[data-frame]:not([data-frame='0']) {
@@ -319,9 +316,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .album[data-ready='true'] [data-page][data-state='out-next'],
-    .album[data-ready='true'] [data-page][data-state='out-prev'],
-    .album[data-ready='true'] [data-page][data-state='in'] {
+    .album-leaf[data-turning='true'] {
       animation: none;
     }
   }
@@ -360,6 +355,27 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         const n = Number.parseFloat(raw);
         return Number.isFinite(n) ? (/ms$/.test(raw) ? n : n * 1000) : 700;
       })();
+
+      const leaf = root.querySelector<HTMLElement>('[data-album-leaf]');
+      const leafFront = root.querySelector<HTMLElement>('[data-leaf-front]');
+      const leafBack = root.querySelector<HTMLElement>('[data-leaf-back]');
+
+      /** 把某页里的图版克隆进书叶的一面。 */
+      function fillFace(face: HTMLElement | null, page: HTMLElement): void {
+        if (!face) return;
+        face.replaceChildren();
+        // 页单位是 spread（含若干 figure）或单个 figure 本身
+        const figures = page.matches('figure')
+          ? [page]
+          : Array.from(page.querySelectorAll<HTMLElement>('figure.album-plate'));
+        for (const fig of figures) {
+          const clone = fig.cloneNode(true) as HTMLElement;
+          clone.removeAttribute('data-state');
+          clone.style.visibility = 'visible';
+          clone.style.opacity = '1';
+          face.append(clone);
+        }
+      }
 
       /** 把一页设成某状态，并同步 aria-hidden（spread 模式要连带它内部的 plate）。 */
       function stateOf(s: HTMLElement, state: string): void {
@@ -421,21 +437,27 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         paint();
       }
 
-      /** 立即结束当前动画并落定（供连续翻页 / 换模式抢占）。 */
+      /** 立即结束当前动画并落定到目标页（供连续翻页 / 换模式抢占）。 */
       function settle(): void {
         turnToken += 1;
+        if (leaf) leaf.dataset.turning = 'false';
         if (!animating) return;
         pages.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
         animating = false;
       }
 
+      /**
+       * 真书页翻页：把当前页和目标页分别复制到书叶正反面，隐藏真实页，
+       * 书叶绕书脊翻 180°（背面在翻过来之前由 backface-visibility 盖住），
+       * 动画结束才显示目标真实页并撤掉书叶。全程目标页不会提前露出。
+       */
       function go(delta: number): void {
         settle();
         const target = clampSpread(index + delta, pages.length);
         if (target === index) return;
         const from = pages[index];
         const to = pages[target];
-        if (!from || !to) return;
+        if (!from || !to || !leaf) return;
 
         if (reduce) {
           stateOf(from, 'hidden');
@@ -445,17 +467,23 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
           return;
         }
 
+        // 书叶正面 = 当前页；背面 = 目标页。往后翻时背面要预翻 180° 才对。
+        fillFace(leafFront, from);
+        fillFace(leafBack, to);
+        leaf.dataset.dir = delta > 0 ? 'next' : 'prev';
+
         animating = true;
         const myToken = turnToken;
-        stateOf(to, 'in');
-        stateOf(from, delta > 0 ? 'out-next' : 'out-prev');
+        // 真实页全部隐藏，交给书叶接管（此刻读者看到的仍是当前页，只是换成了书叶正面）
+        pages.forEach((s) => stateOf(s, 'hidden'));
+        leaf.dataset.turning = 'true';
         index = target;
         syncChrome();
 
         window.setTimeout(() => {
           if (myToken !== turnToken) return;
-          stateOf(from, 'hidden');
-          stateOf(to, 'active');
+          leaf.dataset.turning = 'false';
+          pages.forEach((s, i) => stateOf(s, i === index ? 'active' : 'hidden'));
           animating = false;
         }, turnMs + 30);
       }
