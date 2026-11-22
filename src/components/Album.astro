@@ -320,6 +320,11 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     .album-spread {
       display: contents;
     }
+    /* 所有页（含真实页与书叶）垂直居中，横图不再顶部对齐、翻页时也不跳位 */
+    .album-stage,
+    .album-leaf__face {
+      align-items: center;
+    }
     .album-plate[data-page] {
       grid-area: 1 / 1;
       position: relative;
