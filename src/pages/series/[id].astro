@@ -3,13 +3,14 @@
  * series/[id].astro —— 系列详情（摄影集画册）
  *
  * 结构（DESIGN §5 / §10 系列=章节）：
- *   ① 章节题行（竖排宋体题名 + 等宽册号朱砂 + 元数据）
- *   ② 拍摄手记（entry.body 渲染 · 左右对置 .duo；body 为空则整块自动省略）
- *   ③ 摄影集画册（ albums：<Album /> 一屏两页、左右翻页，取代旧的平铺照片流 + 灯箱）
+ *   ① 摄影集画册（ albums：<Album /> 一屏两页、中间书脊、两侧翻页键、下方帧窗格）
+ *   ② 章节题行（竖排宋体题名 + 等宽册号朱砂 + 元数据）—— 退到册后
+ *   ③ 拍摄手记（entry.body 渲染 · 左右对置 .duo；body 为空则整块自动省略）
  *
- * 呈现方式（2026-11-21 改版）：打开一个选集不再平铺照片 + 点开灯箱，
- *   而是像实体摄影集那样一屏摊开两张照片、左右翻页。照片顺序 = frontmatter photos[] 顺序。
- *   首页与随笔详情的灯箱保持原样，本页不再挂 <Lightbox />。
+ * 呈现方式（2026-11-22 调整）：点进选集第一眼就是照片，不再先顶一行标题。
+ *   画册仍是实体摄影集那样一屏摊开两张、左右翻页；册名/张数/手记挪到画册下方，
+ *   想先知道是哪一本就往下滚。照片顺序 = frontmatter photos[] 顺序。
+ *   首页与随笔详情的灯箱保持原样，本页不挂 <Lightbox />。
  *
  * 硬约束（勿偏离）：
  *   - getStaticPaths 只对**已发布**系列生成路由 → draft 天然 404；slug = entryResourceDir 末段；
@@ -133,7 +134,18 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
   description={`${entry.data.title}：${metaLine}。`}
   bodyClass="series-detail-page"
 >
-  <!-- ① 章节题行：竖排宋体题名 + 等宽册号（朱砂）+ 元数据 -->
+  <!-- ① 摄影集画册：进页第一眼就是照片（册名与手记退到册后） -->
+  {
+    total > 0 ? (
+      <div class="wrap wrap--album">
+        <div class="series-album">
+          <Album spreads={spreads} frameTotal={total} label={`${entry.data.title} · 摄影集`} />
+        </div>
+      </div>
+    ) : null
+  }
+
+  <!-- ② 章节题行：竖排宋体题名 + 等宽册号（朱砂）+ 元数据 -->
   <div class="wrap">
     <section class="series-detail" aria-label={entry.data.title}>
       <div class="chapter-head rise">
@@ -144,7 +156,7 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     </section>
   </div>
 
-  <!-- ② 拍摄手记：左右对置；body 为空 → 整块自动省略 -->
+  <!-- ③ 拍摄手记：左右对置；body 为空 → 整块自动省略 -->
   {
     notePresent ? (
       <div class="wrap">
@@ -167,19 +179,20 @@ const metaLine = `${frameCount} 帧 · ${fmtDate(entry.data.date)}`;
     ) : null
   }
 
-  <!-- ③ 摄影集画册：一屏两页、左右翻页（替代旧的平铺照片流 + 夜底灯箱） -->
-  {
-    total > 0 ? (
-      <div class="wrap">
-        <div class="series-album">
-          <Album spreads={spreads} frameTotal={total} label={`${entry.data.title} · 摄影集`} />
-        </div>
-      </div>
-    ) : null
-  }
+  <!-- 画册已提到页首；此处不再重复挂 Album -->
 </Base>
 
 <style>
+  /* 画册独占一档更宽的容器，让对页真正摊开（正文仍走 1280） */
+  .wrap--album {
+    max-width: var(--container-album);
+  }
+
+  /* 册后记：照片看完才交代这是哪一本 */
+  .wrap--album + .wrap {
+    margin-top: var(--gap-page);
+  }
+
   /* 章节题行：竖排题名是结构件（DESIGN §3.3），此行改基线为顶对齐，让竖排标题与等宽册号/元数据同框。 */
   .series-detail .chapter-head {
     align-items: flex-start;

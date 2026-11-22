@@ -2,15 +2,23 @@
 /* ============================================================================
  * Album.astro —— 摄影集画册翻页（系列详情页的照片呈现方式）
  *
- * 一屏摊开两张照片（对页），左右翻页，像翻实体摄影集。取代旧的「平铺网格 + 点开灯箱」。
+ * 一屏摊开两张照片（对页），中缝压一道书脊，左右翻页，像翻实体摄影集。
+ * 取代旧的「平铺网格 + 点开灯箱」。
+ *
+ * 版式（2026-11-22 调整）：
+ *   ① 舞台两侧各一枚翻页键（宽屏贴边垂直居中；窄屏浮到舞台顶部两角，不占照片宽度）；
+ *   ② 宽屏对页两图紧贴，中缝由 .album-spread[data-count='2']::after 画书脊
+ *      （纸面 → 弯折暗部 → 装订线）；窄屏 spread 退成 contents，书脊随之消失；
+ *   ③ 舞台下方一条帧窗格：全部帧的缩略图，点一下跳到该帧所在对页，当前页高亮。
  *
  * 数据：由页面把所有帧按 album.paginateAlbum 切成对页传进来；本组件不产数据、
  *       不内联任何照片路径。宽高一律 sidecar 真值（页面已解析好 URL）。
  *
  * 交互：
  *   - 左右按钮 / 键盘 ←→（Home/End）/ 触摸左右滑 翻页；
+ *   - 帧窗格点击直达（不播翻页动画，长距离跳页要立即到位）；
  *   - 到头就停（aria-disabled，但按钮仍可聚焦，焦点不吃掉）；
- *   - 换页 aria-live 播报「第 N 页，共 M 页」；
+ *   - 换页 aria-live 播报「第 N 页，共 M 页」；帧窗格 aria-current 标当前帧；
  *   - 页码片走 PageChip（帧号语义沿用）。
  *
  * 无 JS 降级：所有对页都渲染进 DOM，CSS 默认只显示第一屏（.album[data-ready] 之前）；
@@ -33,7 +41,9 @@ interface Props {
 
 const { spreads, frameTotal, label = '摄影集画册' } = Astro.props;
 const total = spreads.length;
-const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0);
+/** 全部帧（帧窗格按帧铺），顺序与对页一致 */
+const frames = spreads.flatMap((spread) => spread.photos);
+const frameCount = frameTotal ?? frames.length;
 ---
 
 <section
@@ -47,30 +57,19 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
 >
   {
     total > 0 ? (
-      <div class="album-bar">
-        <button type="button" class="album-nav" data-album-prev aria-label="上一页（左方向键）">
+      <div class="album-frame">
+        <button type="button" class="album-nav album-nav--prev" data-album-prev aria-label="上一页（左方向键）">
           <span aria-hidden="true">←</span>
         </button>
-        <span class="album-chip" data-album-chip>
-          {spreadLabel(0, total)}
-        </span>
-        <output class="album-live" data-album-live role="status" aria-live="polite">
-          {announceSpread(0, total)}
-        </output>
-        <button type="button" class="album-nav" data-album-next aria-label="下一页（右方向键）">
-          <span aria-hidden="true">→</span>
-        </button>
-      </div>
-    ) : null
-  }
 
-  <div class="album-stage" data-album-stage>
+        <div class="album-stage" data-album-stage>
     {
       spreads.map((spread, pageIndex) => (
         <div
           class="album-spread"
           data-album-spread
           data-index={pageIndex}
+          data-count={spread.photos.length}
           data-active={pageIndex === 0 ? 'true' : 'false'}
           data-state={pageIndex === 0 ? 'active' : 'hidden'}
           data-page="spread"
@@ -107,13 +106,39 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
       <div class="album-leaf__face album-leaf__front" data-leaf-front></div>
       <div class="album-leaf__face album-leaf__back" data-leaf-back></div>
     </div>
-  </div>
+        </div>
 
-  {
-    total > 0 ? (
-      <p class="album-hint mono" aria-hidden="true">
-        左右方向键 / 滑动翻页 · {spreadLabel(0, total)}
-      </p>
+        <button type="button" class="album-nav album-nav--next" data-album-next aria-label="下一页（右方向键）">
+          <span aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <div class="album-foot">
+        <div class="album-foot__meta">
+          <span class="album-chip" data-album-chip>
+            {spreadLabel(0, total)}
+          </span>
+          <output class="album-live" data-album-live role="status" aria-live="polite">
+            {announceSpread(0, total)}
+          </output>
+        </div>
+
+        <div class="album-strip" data-album-strip role="group" aria-label={`${label} · 照片窗格`}>
+          {frames.map((frame, i) => (
+            <button
+              type="button"
+              class="album-strip__item"
+              data-album-strip-item
+              data-frame={i}
+              data-current={i === 0 ? 'true' : 'false'}
+              aria-label={`第 ${i + 1} 帧`}
+              aria-current={i === 0 ? 'true' : undefined}
+            >
+              <img src={frame.src} width={frame.width} height={frame.height} alt="" />
+            </button>
+          ))}
+        </div>
+      </div>
     ) : null
   }
 </section>
@@ -132,12 +157,13 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     outline-offset: var(--hairline-gap);
   }
 
-  .album-bar {
-    display: flex;
+  /* 舞台 + 两侧翻页键：按钮占 1/3 列，舞台在中间列 */
+  .album-frame {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: center;
     gap: var(--gap-inline);
-    margin-bottom: var(--gap-baseline);
   }
 
   .album-chip {
@@ -160,7 +186,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     font-family: var(--font-mono);
     font-size: var(--text-label-lg);
     color: var(--ink);
-    background: none;
+    background: var(--scrim-paper);
     border: var(--rule-w) solid var(--rule);
     border-radius: 0;
     min-width: var(--lb-hit);
@@ -183,20 +209,55 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     cursor: default;
   }
 
+  .album-nav--prev {
+    grid-area: 1 / 1;
+  }
+
+  .album-nav--next {
+    grid-area: 1 / 3;
+  }
+
   /* 舞台：所有页叠在同一个网格单元里。翻页时由双面书叶接管，真实页先隐藏。 */
   .album-stage {
+    grid-area: 1 / 2;
     display: grid;
     perspective: var(--album-spread-perspective);
   }
 
-  /* 宽屏：对页 .album-spread 是翻页单位（两图并排） */
+  /* 宽屏：对页 .album-spread 是翻页单位（两页等高，中缝压书脊） */
   .album-spread {
     grid-area: 1 / 1;
     position: relative;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--gap-spread);
-    align-items: center;
+    grid-template-rows: var(--album-page-h);
+    gap: 0;
+    align-items: stretch;
+  }
+
+  /* 书脊：每张图的内侧边缘向中缝压一道暗部，接缝处相接成折痕。
+     折痕跟着各自的图走 —— 两图高度不一致时不会伸到空白里。 */
+  .album-plate__media::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: var(--album-spine-w);
+    pointer-events: none;
+  }
+
+  :is(.album-spread, .album-leaf__face)[data-count='2']
+    > .album-plate:nth-of-type(1)
+    .album-plate__media::after {
+    right: 0;
+    background: var(--album-spine-in);
+  }
+
+  :is(.album-spread, .album-leaf__face)[data-count='2']
+    > .album-plate:nth-of-type(2)
+    .album-plate__media::after {
+    left: 0;
+    background: var(--album-spine-out);
   }
 
   /* 页的可见状态 */
@@ -230,10 +291,12 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
   .album-leaf__face {
     grid-area: 1 / 1; /* 两面叠在同一格，leaf 高度由内容撑起 */
     /* 内容由 JS 从对应页克隆进来 */
+    position: relative;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--gap-spread);
-    align-items: center;
+    grid-template-rows: var(--album-page-h);
+    gap: 0;
+    align-items: stretch;
     background: var(--paper);
     box-shadow: var(--shadow-plate);
   }
@@ -293,26 +356,83 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
 
   .album-plate {
     margin: 0;
+    display: grid;
+    min-height: 0;
   }
 
+  /* 每页是一张纸：纸色页框，照片按比例最大程度放进版心（不裁切） */
   .album-plate__media {
     position: relative;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding: var(--album-page-pad);
     overflow: hidden;
     box-shadow: var(--shadow-plate);
-    background: var(--paper-deep);
+    background: var(--paper);
   }
 
   .album-plate__media > img {
     display: block;
-    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
     height: auto;
   }
 
-  .album-hint {
-    text-align: center;
-    font-size: var(--text-label);
-    color: var(--ink-soft);
+  /* ---- 舞台下方：页码 + 帧窗格 ---- */
+  .album-foot {
+    display: grid;
+    gap: var(--gap-stack-sm);
     margin-top: var(--gap-baseline);
+  }
+
+  .album-foot__meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-inline);
+  }
+
+  .album-strip {
+    position: relative;
+    display: flex;
+    gap: var(--album-strip-gap);
+    overflow-x: auto;
+    padding-bottom: var(--gap-stack-xs);
+    scrollbar-width: thin;
+  }
+
+  .album-strip__item {
+    flex: 0 0 auto;
+    width: var(--album-strip-h);
+    height: var(--album-strip-h);
+    padding: 0;
+    overflow: hidden;
+    border: var(--rule-w) solid var(--rule);
+    background: var(--paper-deep);
+    opacity: var(--album-strip-dim);
+    cursor: pointer;
+    transition:
+      opacity var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .album-strip__item:hover,
+  .album-strip__item:focus-visible {
+    opacity: 1;
+  }
+
+  .album-strip__item[data-current='true'] {
+    opacity: 1;
+    border-color: var(--cinnabar);
+  }
+
+  .album-strip__item > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 
   @media (max-width: 900px) {
@@ -330,9 +450,42 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
       position: relative;
       width: 100%;
     }
-    /* 书叶两面在竖屏也只有一张图 */
+    /* 书叶两面在竖屏也只有一张图，取消宽屏的等高版心 */
     .album-leaf__face {
       grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+    /* 窄屏不套页框：照片自己撑满宽度 */
+    .album-plate__media {
+      height: auto;
+      padding: 0;
+    }
+    .album-plate__media > img {
+      width: 100%;
+      max-height: none;
+    }
+    /* 窄屏一页一张，没有对页中缝 */
+    .album-plate__media::after {
+      display: none;
+    }
+    /* 窄屏舞台吃掉整行，翻页键浮到舞台顶部两角（不占照片宽度） */
+    .album-frame {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+    }
+    .album-stage {
+      grid-area: 1 / 1;
+    }
+    .album-nav {
+      position: absolute;
+      top: var(--gap-stack-xs);
+      z-index: 6;
+    }
+    .album-nav--prev {
+      left: var(--gap-stack-xs);
+    }
+    .album-nav--next {
+      right: var(--gap-stack-xs);
     }
     /* 无 JS 降级：首帧只有第一张可见，其余收起（避免两张叠在一起） */
     .album[data-ready='false'] .album-plate[data-frame]:not([data-frame='0']) {
@@ -359,7 +512,10 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
     const chip = root.querySelector<HTMLElement>('[data-album-chip]');
     const live = root.querySelector<HTMLElement>('[data-album-live]');
     const stage = root.querySelector<HTMLElement>('[data-album-stage]');
-    const hint = root.querySelector<HTMLElement>('.album-hint');
+    const strip = root.querySelector<HTMLElement>('[data-album-strip]');
+    const stripItems = strip
+      ? Array.from(strip.querySelectorAll<HTMLElement>('[data-album-strip-item]'))
+      : [];
     const frameTotal = plates.length;
 
     if (frameTotal > 0 && prev && next && chip && live && stage) {
@@ -370,6 +526,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
       let index = 0;
       let animating = false;
       let turnToken = 0;
+      let stripCentered = false;
       const reduce =
         typeof matchMedia === 'function' &&
         matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -400,6 +557,7 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
           clone.style.opacity = '1';
           face.append(clone);
         }
+        face.dataset.count = String(figures.length);
       }
 
       /** 把一页设成某状态，并同步 aria-hidden（spread 模式要连带它内部的 plate）。 */
@@ -418,14 +576,34 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         }
       }
 
+      /**
+       * 帧窗格跟随当前页：宽屏当前对页含两帧，窄屏含一帧。
+       * 高亮 + aria-current，并把该帧滚到窗格中央（只滚窗格自身，不带动整页）。
+       */
+      function syncStrip(): void {
+        if (!strip || stripItems.length === 0) return;
+        const narrow = isNarrow();
+        stripItems.forEach((el, i) => {
+          const on = narrow ? i === index : Math.floor(i / 2) === index;
+          el.dataset.current = String(on);
+          if (on) el.setAttribute('aria-current', 'true');
+          else el.removeAttribute('aria-current');
+        });
+        const anchor = stripItems[narrow ? index : index * 2];
+        if (!anchor) return;
+        const left = anchor.offsetLeft - (strip.clientWidth - anchor.offsetWidth) / 2;
+        strip.scrollTo({
+          left: Math.max(0, left),
+          behavior: stripCentered && !reduce ? 'smooth' : 'auto',
+        });
+        stripCentered = true;
+      }
+
       function syncChrome(): void {
         const count = pages.length;
         chip!.textContent = spreadLabel(index, count);
         live!.textContent = announceSpread(index, count);
-        if (hint) {
-          const base = hint.textContent ?? '';
-          hint.textContent = base.replace(/\d+\s*\/\s*\d+\s*$/, spreadLabel(index, count));
-        }
+        syncStrip();
         prev!.setAttribute('aria-disabled', String(index <= 0));
         next!.setAttribute('aria-disabled', String(index >= count - 1));
         root!.dataset.index = String(index);
@@ -523,8 +701,20 @@ const frameCount = frameTotal ?? spreads.reduce((n, s) => n + s.photos.length, 0
         window.setTimeout(land, turnMs + 200);
       }
 
+      /** 帧窗格点击：直接跳到该帧所在页（长距离跳页不播翻页动画）。 */
+      function jumpToFrame(frame: number): void {
+        const target = clampSpread(isNarrow() ? frame : Math.floor(frame / 2), pages.length);
+        settle();
+        index = target;
+        paint();
+      }
+
       prev.addEventListener('click', () => go(-1));
       next.addEventListener('click', () => go(1));
+
+      stripItems.forEach((item, i) => {
+        item.addEventListener('click', () => jumpToFrame(i));
+      });
       if (typeof narrowMq?.addEventListener === 'function') narrowMq.addEventListener('change', relayout);
       else window.addEventListener('resize', relayout);
 
